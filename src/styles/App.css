@@ -1,0 +1,32 @@
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+main {
+  flex: 1;
+  padding: 2rem 0;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 200px;
+}
+
+.error {
+  color: var(--accent-color);
+  text-align: center;
+  padding: 1rem;
+  margin: 1rem 0;
+  background-color: rgba(252, 70, 107, 0.1);
+  border-radius: var(--border-radius);
+} 
