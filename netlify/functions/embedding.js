@@ -71,8 +71,10 @@ exports.handler = async (event, context) => {
       requestHeaders['Authorization'] = `Bearer ${apiKey}`;
     }
     
+    // Hugging Face Inference API endpoint (router API için farklı format gerekebilir)
+    // Önce Inference API'yi deniyoruz (daha stabil)
     const response = await axios.post(
-      `https://router.huggingface.co/pipeline/feature-extraction/${model}`,
+      `https://api-inference.huggingface.co/pipeline/feature-extraction/${model}`,
       { inputs: text },
       { 
         headers: requestHeaders,

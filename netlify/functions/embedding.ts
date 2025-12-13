@@ -75,8 +75,9 @@ export const handler: Handler = async (
       requestHeaders['Authorization'] = `Bearer ${apiKey}`;
     }
     
+    // Hugging Face Inference API endpoint
     const response = await axios.post(
-      `https://router.huggingface.co/pipeline/feature-extraction/${model}`,
+      `https://api-inference.huggingface.co/pipeline/feature-extraction/${model}`,
       { inputs: text },
       { 
         headers: requestHeaders,
