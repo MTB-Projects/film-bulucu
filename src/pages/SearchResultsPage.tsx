@@ -15,7 +15,7 @@ const SearchResultsPage = () => {
   const state = location.state as LocationState
   const initialQuery = state?.query || ''
   
-  const [currentQuery, setCurrentQuery] = useState(initialQuery)
+  const [currentQuery, setCurrentQuery] = useState('')
   const [isSearching, setIsSearching] = useState(false)
   const [results, setResults] = useState<FilmSearchResult[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -73,7 +73,7 @@ const SearchResultsPage = () => {
   
   // İlk yükleme sırasında arama sorgusu varsa sonuçları getir
   useEffect(() => {
-    if (initialQuery && !currentQuery) {
+    if (initialQuery && initialQuery !== currentQuery) {
       setCurrentQuery(initialQuery)
       handleSearch(initialQuery)
     }
