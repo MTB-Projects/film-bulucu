@@ -75,7 +75,7 @@ async function getTextEmbedding(text: string): Promise<number[]> {
       }
       
       const response = await axios.post(
-        `https://api-inference.huggingface.co/pipeline/feature-extraction/${model}`,
+        `https://router.huggingface.co/pipeline/feature-extraction/${model}`,
         { inputs: text },
         { headers, timeout: 30000 }
       );

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useLocation, Link, useNavigate } from 'react-router-dom'
 import SearchForm from '../components/SearchForm'
 import '../styles/SearchResultsPage.css'
@@ -13,16 +13,25 @@ const SearchResultsPage = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const state = location.state as LocationState
-  const searchQuery = state?.query || ''
+  const initialQuery = state?.query || ''
   
+  // Son işlenen initialQuery'yi takip et (infinite loop'u önlemek için)
+  const lastProcessedQueryRef = useRef<string>('')
+  
+  const [currentQuery, setCurrentQuery] = useState('')
   const [isSearching, setIsSearching] = useState(false)
   const [results, setResults] = useState<FilmSearchResult[]>([])
   const [error, setError] = useState<string | null>(null)
   
   const handleSearch = useCallback(async (query: string) => {
+    // Query state'ini güncelle
+    setCurrentQuery(query)
     setIsSearching(true)
     setError(null)
     setResults([])
+    
+    // URL'i güncelle (geri butonu için)
+    navigate('/search-results', { state: { query }, replace: true })
     
     try {
       const searchResults = await searchFilmsByDescription(query)
@@ -45,7 +54,7 @@ const SearchResultsPage = () => {
     } finally {
       setIsSearching(false)
     }
-  }, [])
+  }, [navigate])
   
   const handleMovieDetails = async (movieId: number) => {
     try {
@@ -66,11 +75,15 @@ const SearchResultsPage = () => {
   }
   
   // İlk yükleme sırasında arama sorgusu varsa sonuçları getir
+  // Sadece initialQuery değiştiğinde ve henüz işlenmediğinde çalışır
   useEffect(() => {
-    if (searchQuery) {
-      handleSearch(searchQuery)
+    // Eğer initialQuery var ve henüz işlenmemişse
+    if (initialQuery && initialQuery !== lastProcessedQueryRef.current) {
+      lastProcessedQueryRef.current = initialQuery
+      setCurrentQuery(initialQuery)
+      handleSearch(initialQuery)
     }
-  }, [searchQuery, handleSearch])
+  }, [initialQuery, handleSearch])
   
   return (
     <div className="search-results-page">
@@ -80,9 +93,9 @@ const SearchResultsPage = () => {
           <SearchForm onSearch={handleSearch} isSearching={isSearching} />
         </div>
         
-        {searchQuery && (
+        {currentQuery && (
           <div className="search-query">
-            <p>Aranan: <span className="query-text">"{searchQuery}"</span></p>
+            <p>Aranan: <span className="query-text">"{currentQuery}"</span></p>
           </div>
         )}
         
