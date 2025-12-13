@@ -1,5 +1,3 @@
-// @ts-nocheck
-
 import { useState, FormEvent } from 'react'
 import '../styles/SearchForm.css'
 

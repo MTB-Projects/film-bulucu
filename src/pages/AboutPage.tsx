@@ -1,5 +1,3 @@
-// @ts-nocheck
-
 import '../styles/AboutPage.css'
 
 const AboutPage = () => {

@@ -1,41 +1,9 @@
-// @ts-nocheck
-
-import { useState, useEffect } from 'react'
-import { useLocation, Link } from 'react-router-dom'
+import { useState, useEffect, useCallback } from 'react'
+import { useLocation, Link, useNavigate } from 'react-router-dom'
 import SearchForm from '../components/SearchForm'
 import '../styles/SearchResultsPage.css'
 import { searchFilmsByDescription, FilmSearchResult } from '../services/aiService'
-
-// Örnek arama sonuçları
-const SAMPLE_SEARCH_RESULTS = [
-  {
-    id: 1,
-    title: 'E.T. the Extra-Terrestrial',
-    year: 1982,
-    poster: '/images/et.jpg',
-    description: 'Bir uzaylının dünyada kalışı ve bir çocukla kurduğu dostluk hikayesi.',
-    matchScore: 95,
-    scenes: ['Çocuk ve uzaylı kırmızı bir ışık kullanarak iletişim kurar.', 'Bisikletle ay önünde uçma sahnesi.']
-  },
-  {
-    id: 2,
-    title: 'Close Encounters of the Third Kind',
-    year: 1977,
-    poster: '/images/close-encounters.jpg',
-    description: 'UFO ile karşılaşan bir adamın yaşadığı olağanüstü deneyimler.',
-    matchScore: 87,
-    scenes: ['Adam evde minyatür dağ yapar.', 'Işıklı uzay gemisi insanlarla iletişim kurar.']
-  },
-  {
-    id: 3,
-    title: 'The Day the Earth Stood Still',
-    year: 1951,
-    poster: '/images/day-earth-stood-still.jpg',
-    description: 'Dünyaya gelen uzaylı ve robotunun barış mesajı getirmesi.',
-    matchScore: 72,
-    scenes: ['Uzay gemisi parkta iner.', 'Robot şehirde yürür ve panik yaratır.']
-  }
-]
+import { getMovieDetails } from '../services/tmdbService'
 
 interface LocationState {
   query?: string
@@ -43,6 +11,7 @@ interface LocationState {
 
 const SearchResultsPage = () => {
   const location = useLocation()
+  const navigate = useNavigate()
   const state = location.state as LocationState
   const searchQuery = state?.query || ''
   
@@ -50,19 +19,50 @@ const SearchResultsPage = () => {
   const [results, setResults] = useState<FilmSearchResult[]>([])
   const [error, setError] = useState<string | null>(null)
   
-  const handleSearch = async (query: string) => {
+  const handleSearch = useCallback(async (query: string) => {
     setIsSearching(true)
     setError(null)
+    setResults([])
     
     try {
       const searchResults = await searchFilmsByDescription(query)
-      setResults(searchResults)
+      if (searchResults.length === 0) {
+        setError("Aramanızla eşleşen film bulunamadı. Lütfen farklı kelimeler veya daha detaylı bir açıklama deneyin.")
+      } else {
+        setResults(searchResults)
+      }
     } catch (err) {
       console.error("Film arama hatası:", err)
-      setError("Film arama sırasında bir hata oluştu. Lütfen daha sonra tekrar deneyin.")
+      const errorMessage = err instanceof Error ? err.message : "Film arama sırasında bir hata oluştu."
+      
+      if (errorMessage.includes('API key')) {
+        setError("API yapılandırması eksik. Lütfen .env dosyasında VITE_TMDB_API_KEY değişkenini ayarlayın.")
+      } else if (errorMessage.includes('CORS') || errorMessage.includes('cors')) {
+        setError("CORS hatası: Embedding servisi kullanılamıyor. Basit eşleştirme modu kullanılıyor. Daha iyi sonuçlar için serverless function'ı deploy edin.")
+      } else {
+        setError("Film arama sırasında bir hata oluştu. Lütfen daha sonra tekrar deneyin.")
+      }
     } finally {
       setIsSearching(false)
     }
+  }, [])
+  
+  const handleMovieDetails = async (movieId: number) => {
+    try {
+      const details = await getMovieDetails(movieId)
+      // Film detayları için yeni bir sayfa oluşturulabilir veya modal gösterilebilir
+      // Şimdilik TMDB sayfasına yönlendiriyoruz
+      window.open(`https://www.themoviedb.org/movie/${movieId}`, '_blank')
+    } catch (err) {
+      console.error('Film detayları alınamadı:', err)
+      alert('Film detayları yüklenirken bir hata oluştu.')
+    }
+  }
+  
+  const handleWatchTrailer = (movieId: number, title: string) => {
+    // TMDB'den video bilgileri çekilebilir, şimdilik YouTube'da arama yapıyoruz
+    const searchQuery = encodeURIComponent(`${title} trailer`)
+    window.open(`https://www.youtube.com/results?search_query=${searchQuery}`, '_blank')
   }
   
   // İlk yükleme sırasında arama sorgusu varsa sonuçları getir
@@ -70,7 +70,7 @@ const SearchResultsPage = () => {
     if (searchQuery) {
       handleSearch(searchQuery)
     }
-  }, [searchQuery])
+  }, [searchQuery, handleSearch])
   
   return (
     <div className="search-results-page">
@@ -98,7 +98,10 @@ const SearchResultsPage = () => {
               {results.map(result => (
                 <div key={result.id} className="result-card">
                   <div className="result-poster">
-                    <img src={`https://via.placeholder.com/200x300?text=${encodeURIComponent(result.title)}`} alt={result.title} />
+                    <img src={result.posterUrl} alt={result.title} onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.src = `https://via.placeholder.com/200x300?text=${encodeURIComponent(result.title)}`;
+                    }} />
                     <div className="match-score">
                       <span className="score-number">{result.matchScore}%</span>
                       <span className="score-label">Eşleşme</span>
@@ -118,8 +121,18 @@ const SearchResultsPage = () => {
                     </div>
                     
                     <div className="result-actions">
-                      <button className="btn">Film Detayları</button>
-                      <button className="btn btn-outline">Fragmanı İzle</button>
+                      <button 
+                        className="btn"
+                        onClick={() => handleMovieDetails(result.id)}
+                      >
+                        Film Detayları
+                      </button>
+                      <button 
+                        className="btn btn-outline"
+                        onClick={() => handleWatchTrailer(result.id, result.title)}
+                      >
+                        Fragmanı İzle
+                      </button>
                     </div>
                   </div>
                 </div>
