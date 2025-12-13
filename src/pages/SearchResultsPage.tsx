@@ -13,16 +13,22 @@ const SearchResultsPage = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const state = location.state as LocationState
-  const searchQuery = state?.query || ''
+  const initialQuery = state?.query || ''
   
+  const [currentQuery, setCurrentQuery] = useState(initialQuery)
   const [isSearching, setIsSearching] = useState(false)
   const [results, setResults] = useState<FilmSearchResult[]>([])
   const [error, setError] = useState<string | null>(null)
   
   const handleSearch = useCallback(async (query: string) => {
+    // Query state'ini güncelle
+    setCurrentQuery(query)
     setIsSearching(true)
     setError(null)
     setResults([])
+    
+    // URL'i güncelle (geri butonu için)
+    navigate('/search-results', { state: { query }, replace: true })
     
     try {
       const searchResults = await searchFilmsByDescription(query)
@@ -45,7 +51,7 @@ const SearchResultsPage = () => {
     } finally {
       setIsSearching(false)
     }
-  }, [])
+  }, [navigate])
   
   const handleMovieDetails = async (movieId: number) => {
     try {
@@ -67,10 +73,11 @@ const SearchResultsPage = () => {
   
   // İlk yükleme sırasında arama sorgusu varsa sonuçları getir
   useEffect(() => {
-    if (searchQuery) {
-      handleSearch(searchQuery)
+    if (initialQuery && !currentQuery) {
+      setCurrentQuery(initialQuery)
+      handleSearch(initialQuery)
     }
-  }, [searchQuery, handleSearch])
+  }, [initialQuery, currentQuery, handleSearch])
   
   return (
     <div className="search-results-page">
@@ -80,9 +87,9 @@ const SearchResultsPage = () => {
           <SearchForm onSearch={handleSearch} isSearching={isSearching} />
         </div>
         
-        {searchQuery && (
+        {currentQuery && (
           <div className="search-query">
-            <p>Aranan: <span className="query-text">"{searchQuery}"</span></p>
+            <p>Aranan: <span className="query-text">"{currentQuery}"</span></p>
           </div>
         )}
         

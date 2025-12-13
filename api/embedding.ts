@@ -40,7 +40,7 @@ export default async function handler(
     }
     
     const response = await axios.post(
-      `https://api-inference.huggingface.co/pipeline/feature-extraction/${model}`,
+      `https://router.huggingface.co/pipeline/feature-extraction/${model}`,
       { inputs: text },
       { 
         headers,
