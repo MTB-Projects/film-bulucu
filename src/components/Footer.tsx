@@ -1,5 +1,3 @@
-// @ts-nocheck
-
 import { Link } from 'react-router-dom'
 import '../styles/Footer.css'
 
@@ -14,12 +12,6 @@ const Footer = () => {
         <div className="footer-links">
           <Link to="/about" className="footer-link">
             Hakkında
-          </Link>
-          <Link to="/privacy" className="footer-link">
-            Gizlilik
-          </Link>
-          <Link to="/terms" className="footer-link">
-            Kullanım Şartları
           </Link>
         </div>
       </div>

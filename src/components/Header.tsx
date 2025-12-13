@@ -1,5 +1,3 @@
-// @ts-nocheck
-
 import { Link } from 'react-router-dom'
 import '../styles/Header.css'
 

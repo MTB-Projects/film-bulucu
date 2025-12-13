@@ -1,59 +1,68 @@
-// @ts-nocheck
-
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import '../styles/MovieRecommendations.css'
+import { getPopularMovies, getPosterUrl, getYearFromDate, TMDBMovie } from '../services/tmdbService'
 
-// Bu şimdilik bir örnek veri, normalde bir API'dan gelecek
-const SAMPLE_MOVIES = [
-  {
-    id: 1,
-    title: 'Inception',
-    year: 2010,
-    poster: '/images/inception.jpg',
-    description: 'Zihinlere girip bilgi çalabilen bir hırsız, son görevinde bilgi çalmak yerine bir fikir yerleştirmelidir.'
-  },
-  {
-    id: 2,
-    title: 'The Shawshank Redemption',
-    year: 1994,
-    poster: '/images/shawshank.jpg',
-    description: 'İşlemediği bir suçtan hüküm giyen bankacının hapishane yaşamını ve dostluklarını anlatan film.'
-  },
-  {
-    id: 3,
-    title: 'The Dark Knight',
-    year: 2008,
-    poster: '/images/dark-knight.jpg',
-    description: 'Batman, Joker\'ın Gotham şehrinde yarattığı kaosu durdurmak için mücadele eder.'
-  },
-  {
-    id: 4,
-    title: 'Pulp Fiction',
-    year: 1994,
-    poster: '/images/pulp-fiction.jpg',
-    description: 'Suçlular, boksörler, gangsterler ve bir çanta dolusu gizemli içeriğin olduğu birbirine bağlı hikayeler.'
-  }
-]
+interface MovieCard {
+  id: number
+  title: string
+  year: number
+  poster: string
+  description: string
+}
 
 const MovieRecommendations = () => {
-  const [movies, setMovies] = useState(SAMPLE_MOVIES)
+  const [movies, setMovies] = useState<MovieCard[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const navigate = useNavigate()
   
-  // Gerçek uygulamada API'dan veri çekme işlemi burada olacak
   useEffect(() => {
-    // Bu fonksiyon gerçek bir API çağrısı ile değiştirilecek
     const fetchMovies = async () => {
       try {
-        // Şimdilik örnek veriyi kullanıyoruz
-        // const response = await fetch('https://api.example.com/movies/popular')
-        // const data = await response.json()
-        // setMovies(data.results)
-      } catch (error) {
-        console.error('Film verileri alınamadı', error)
+        setIsLoading(true)
+        setError(null)
+        const response = await getPopularMovies(1)
+        
+        const movieCards: MovieCard[] = response.results.slice(0, 4).map((movie: TMDBMovie) => ({
+          id: movie.id,
+          title: movie.title,
+          year: getYearFromDate(movie.release_date),
+          poster: getPosterUrl(movie.poster_path),
+          description: movie.overview || 'Açıklama bulunamadı.'
+        }))
+        
+        setMovies(movieCards)
+      } catch (err) {
+        console.error('Film verileri alınamadı', err)
+        setError('Popüler filmler yüklenirken bir hata oluştu.')
+      } finally {
+        setIsLoading(false)
       }
     }
     
     fetchMovies()
   }, [])
+  
+  const handleMovieClick = (movieId: number) => {
+    navigate('/search-results', { state: { query: movies.find(m => m.id === movieId)?.title || '' } })
+  }
+  
+  if (isLoading) {
+    return (
+      <div className="movie-recommendations">
+        <div className="loading-message">Filmler yükleniyor...</div>
+      </div>
+    )
+  }
+  
+  if (error) {
+    return (
+      <div className="movie-recommendations">
+        <div className="error-message">{error}</div>
+      </div>
+    )
+  }
   
   return (
     <div className="movie-recommendations">
@@ -61,12 +70,28 @@ const MovieRecommendations = () => {
         {movies.map(movie => (
           <div key={movie.id} className="movie-card">
             <div className="movie-poster">
-              <img src={movie.poster} alt={movie.title} />
+              <img 
+                src={movie.poster} 
+                alt={movie.title}
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  target.src = `https://via.placeholder.com/300x450?text=${encodeURIComponent(movie.title)}`;
+                }}
+              />
             </div>
             <div className="movie-details">
               <h3 className="movie-title">{movie.title} <span className="movie-year">({movie.year})</span></h3>
-              <p className="movie-description">{movie.description}</p>
-              <button className="movie-details-button btn">Detaylar</button>
+              <p className="movie-description">
+                {movie.description.length > 150 
+                  ? movie.description.substring(0, 150) + '...' 
+                  : movie.description}
+              </p>
+              <button 
+                className="movie-details-button btn"
+                onClick={() => handleMovieClick(movie.id)}
+              >
+                Detaylar
+              </button>
             </div>
           </div>
         ))}
