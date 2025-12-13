@@ -101,11 +101,27 @@ Uygulama http://localhost:3000 adresinde çalışacaktır.
 
 ### Netlify Deployment
 
-1. Projeyi Netlify'e push edin
-2. Environment variables'ı ayarlayın:
-   - `VITE_TMDB_API_KEY`: TMDB API key'iniz
-   - `VITE_HUGGING_FACE_API_KEY` veya `HUGGING_FACE_API_KEY`: Hugging Face API key'iniz (opsiyonel)
-3. Netlify otomatik olarak `netlify/functions/embedding.ts` serverless function'ını deploy edecek
+1. Projeyi Netlify'e push edin veya GitHub'dan bağlayın
+2. **Environment Variables Ayarlama (ÖNEMLİ):**
+   
+   Netlify Dashboard'da:
+   - Site ayarlarına gidin (Site settings)
+   - "Environment variables" bölümüne tıklayın
+   - Aşağıdaki değişkenleri ekleyin:
+   
+   **Zorunlu:**
+   - `VITE_TMDB_API_KEY` = `bf8044b88cb2bdd0eff616966d255569` (TMDB API key'iniz)
+   
+   **Opsiyonel (daha iyi sonuçlar için):**
+   - `VITE_HUGGING_FACE_API_KEY` veya `HUGGING_FACE_API_KEY` = Hugging Face token'ınız
+   
+3. **Değişkenleri ekledikten sonra:**
+   - "Deploy settings" > "Trigger deploy" > "Clear cache and deploy site" yapın
+   - Veya yeni bir commit push edin
+   
+4. Netlify otomatik olarak `netlify/functions/embedding.ts` serverless function'ını deploy edecek
+
+**Not:** Environment variable'ları ekledikten sonra mutlaka yeni bir deploy yapın, aksi halde değişkenler build sırasında kullanılmaz.
 
 ### Local Development
 
