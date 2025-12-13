@@ -6,24 +6,32 @@ Netlify'de deploy edilen function hala **eski Hugging Face endpoint**'ini kullan
 - ❌ Eski: `https://api-inference.huggingface.co` (artık çalışmıyor - 410 hatası)
 - ✅ Yeni: `https://router.huggingface.co` (güncel endpoint)
 
-## Çözüm: Yeni Deploy Yapın
+**Log'da görünen:** `url: 'https://api-inference.huggingface.co/...'`  
+**Dosyada olan:** `https://router.huggingface.co/...` ✅
+
+Bu, deploy edilen function'ın eski versiyonu olduğunu gösteriyor.
+
+## Çözüm: Yeni Deploy Yapın (Cache Olmadan!)
 
 ### Adım 1: Değişiklikleri Commit ve Push Edin
 
 ```bash
-git add netlify/functions/embedding.js
-git add netlify/functions/embedding.ts
+git add .
 git commit -m "Update Hugging Face API endpoint to router.huggingface.co"
 git push
 ```
 
-### Adım 2: Netlify'de Manuel Deploy
+### Adım 2: Netlify'de Manuel Deploy (ÖNEMLİ: Cache Olmadan!)
 
-1. **Netlify Dashboard** > Site'nizi seçin
+1. **Netlify Dashboard** > Site'nizi seçin (film-bulucu)
 2. **Deploys** sekmesine gidin
 3. **"Trigger deploy"** butonuna tıklayın
-4. **"Deploy project without cache"** seçin (ÖNEMLİ: Cache olmadan!)
+4. **"Deploy project without cache"** seçin ⚠️ (BU ÇOK ÖNEMLİ!)
 5. Deploy tamamlanmasını bekleyin (2-3 dakika)
+
+**Neden "without cache"?**
+- Netlify function'ları build cache'inde saklanabilir
+- Cache olmadan deploy, function'ın yeniden build edilmesini garanti eder
 
 ### Adım 3: Kontrol
 
