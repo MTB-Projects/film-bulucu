@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useLocation, Link, useNavigate } from 'react-router-dom'
 import SearchForm from '../components/SearchForm'
 import '../styles/SearchResultsPage.css'
@@ -14,6 +14,9 @@ const SearchResultsPage = () => {
   const navigate = useNavigate()
   const state = location.state as LocationState
   const initialQuery = state?.query || ''
+  
+  // Son işlenen initialQuery'yi takip et (infinite loop'u önlemek için)
+  const lastProcessedQueryRef = useRef<string>('')
   
   const [currentQuery, setCurrentQuery] = useState('')
   const [isSearching, setIsSearching] = useState(false)
@@ -72,12 +75,15 @@ const SearchResultsPage = () => {
   }
   
   // İlk yükleme sırasında arama sorgusu varsa sonuçları getir
+  // Sadece initialQuery değiştiğinde ve henüz işlenmediğinde çalışır
   useEffect(() => {
-    if (initialQuery && initialQuery !== currentQuery) {
+    // Eğer initialQuery var ve henüz işlenmemişse
+    if (initialQuery && initialQuery !== lastProcessedQueryRef.current) {
+      lastProcessedQueryRef.current = initialQuery
       setCurrentQuery(initialQuery)
       handleSearch(initialQuery)
     }
-  }, [initialQuery, currentQuery, handleSearch])
+  }, [initialQuery, handleSearch])
   
   return (
     <div className="search-results-page">
