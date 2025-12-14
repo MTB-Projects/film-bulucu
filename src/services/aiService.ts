@@ -240,20 +240,56 @@ function convertTMDBToResult(movie: TMDBMovie, matchScore: number, query: string
  */
 export async function searchFilmsByDescription(query: string): Promise<FilmSearchResult[]> {
   try {
-    // 1. Önce TMDB'de direkt arama yap
-    const searchResults = await searchMovies(query, 1);
+    // 1. Önce TMDB'de anahtar kelimelerle arama yap (daha iyi sonuç için)
+    // Query'den önemli kelimeleri çıkar (3+ harfli kelimeler)
+    const queryWords = query.toLowerCase()
+      .split(/\s+/)
+      .filter(word => word.length >= 3)
+      .filter(word => !['bir', 'var', 'vardı', 'film', 'filmi', 'filmdir', 'olan', 'ile', 'için'].includes(word));
     
-    if (searchResults.results.length === 0) {
-      // Eğer direkt arama sonuç vermezse, popüler filmlerden semantic matching yap
-      const popularMovies = await getPopularMovies(1);
-      return await performSemanticMatching(query, popularMovies.results);
+    // Anahtar kelimelerle TMDB'de arama yap
+    let allMovies: TMDBMovie[] = [];
+    
+    // Her anahtar kelime için arama yap ve sonuçları birleştir
+    for (const keyword of queryWords.slice(0, 3)) { // En fazla 3 anahtar kelime
+      try {
+        const searchResults = await searchMovies(keyword, 1);
+        allMovies = [...allMovies, ...searchResults.results];
+      } catch (err) {
+        // Bir kelime için arama başarısız olursa devam et
+        console.warn(`TMDB search failed for keyword "${keyword}":`, err);
+      }
     }
     
-    // 2. Semantic matching ile skorları hesapla
-    const resultsWithScores = await performSemanticMatching(query, searchResults.results);
+    // 2. Popüler filmlerden de film ekle (daha geniş bir set için)
+    // Birden fazla sayfa çek (toplam 100+ film için)
+    const popularPages = await Promise.all([
+      getPopularMovies(1),
+      getPopularMovies(2),
+      getPopularMovies(3),
+      getPopularMovies(4),
+      getPopularMovies(5),
+    ]);
     
-    // 3. Skora göre sırala ve en iyi sonuçları döndür
+    const popularMovies = popularPages.flatMap(page => page.results);
+    
+    // Tüm filmleri birleştir ve tekrarları kaldır
+    const uniqueMovies = new Map<number, TMDBMovie>();
+    [...allMovies, ...popularMovies].forEach(movie => {
+      if (!uniqueMovies.has(movie.id)) {
+        uniqueMovies.set(movie.id, movie);
+      }
+    });
+    
+    const moviesToSearch = Array.from(uniqueMovies.values());
+    
+    // 3. Semantic matching ile skorları hesapla
+    const resultsWithScores = await performSemanticMatching(query, moviesToSearch);
+    
+    // 4. Skora göre sırala ve en iyi sonuçları döndür
+    // Minimum skor eşiği: 30 (daha iyi sonuçlar için)
     return resultsWithScores
+      .filter(result => result.matchScore >= 30)
       .sort((a, b) => b.matchScore - a.matchScore)
       .slice(0, 10); // En fazla 10 sonuç
       
@@ -302,13 +338,30 @@ async function performSemanticMatching(
           score: calculateSimpleMatchScore(query, movie),
         }))
         .filter(item => item.score > 0)
+        .sort((a, b) => b.score - a.score)
         .map(item => convertTMDBToResult(item.movie, item.score, query));
     }
+    
+    // Önce basit matching ile filtrele (daha hızlı)
+    // Bu sayede semantic matching için daha az film kontrol ederiz
+    const preFiltered = movies
+      .map(movie => ({
+        movie,
+        simpleScore: calculateSimpleMatchScore(query, movie),
+      }))
+      .filter(item => item.simpleScore > 5) // Minimum 5 puan alan filmler
+      .sort((a, b) => b.simpleScore - a.simpleScore)
+      .slice(0, 50); // En iyi 50 filmi semantic matching için seç
+    
+    // Eğer pre-filter sonucu yoksa, tüm filmleri kontrol et
+    const moviesToCheck = preFiltered.length > 0 
+      ? preFiltered.map(item => item.movie)
+      : movies.slice(0, 50);
     
     // Her film için embedding ve similarity hesapla
     const results: Array<{ movie: TMDBMovie; score: number }> = [];
     
-    for (const movie of movies.slice(0, 20)) { // İlk 20 filmi kontrol et (rate limit için)
+    for (const movie of moviesToCheck) {
       const movieText = `${movie.title} ${movie.overview || ''}`;
       const movieEmbedding = await getTextEmbedding(movieText);
       
@@ -326,8 +379,8 @@ async function performSemanticMatching(
         }
       }
       
-      // Rate limiting için küçük bir gecikme
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Rate limiting için küçük bir gecikme (50ms - daha hızlı)
+      await new Promise(resolve => setTimeout(resolve, 50));
     }
     
     return results.map(item => convertTMDBToResult(item.movie, item.score, query));
@@ -341,6 +394,7 @@ async function performSemanticMatching(
         score: calculateSimpleMatchScore(query, movie),
       }))
       .filter(item => item.score > 0)
+      .sort((a, b) => b.score - a.score)
       .map(item => convertTMDBToResult(item.movie, item.score, query));
   }
 }
