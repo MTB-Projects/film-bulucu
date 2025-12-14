@@ -1,9 +1,9 @@
 import type { Handler, HandlerEvent, HandlerContext } from '@netlify/functions';
-import axios from 'axios';
+import { HfInference } from '@huggingface/inference';
 
 /**
  * Netlify Serverless Function
- * Hugging Face Inference API'ye proxy görevi görür
+ * Hugging Face Inference Providers API'ye proxy görevi görür
  * CORS sorununu çözer
  * 
  * POST /.netlify/functions/embedding
@@ -66,28 +66,18 @@ export const handler: Handler = async (
     const apiKey = process.env.VITE_HUGGING_FACE_API_KEY || process.env.HUGGING_FACE_API_KEY;
     const model = 'sentence-transformers/all-MiniLM-L6-v2';
     
-    const requestHeaders: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
+    // Inference Providers API için Inference Client SDK kullan
+    const hf = new HfInference(apiKey);
     
-    // Eğer API key varsa Authorization header ekle
-    if (apiKey) {
-      requestHeaders['Authorization'] = `Bearer ${apiKey}`;
-    }
-    
-    // Hugging Face Inference API endpoint
-    const response = await axios.post(
-      `https://api-inference.huggingface.co/pipeline/feature-extraction/${model}`,
-      { inputs: text },
-      { 
-        headers: requestHeaders,
-        timeout: 30000, // 30 saniye timeout
-      }
-    );
+    // Feature extraction için Inference Providers API kullan
+    // HF Inference provider'ı kullan (feature extraction destekliyor)
+    const embedding = await hf.featureExtraction({
+      model: model,
+      inputs: text,
+    });
     
     // Response formatını kontrol et
-    const embedding = response.data[0] || response.data;
-    
+    // Inference Client SDK array döndürür
     if (!Array.isArray(embedding) || embedding.length === 0) {
       return {
         statusCode: 500,
@@ -105,36 +95,13 @@ export const handler: Handler = async (
   } catch (error) {
     console.error('Hugging Face API error:', error);
     
-    if (axios.isAxiosError(error)) {
-      if (error.response) {
-        // API'den hata yanıtı geldi
-        return {
-          statusCode: error.response.status,
-          headers,
-          body: JSON.stringify({ 
-            error: `Hugging Face API error: ${error.response.statusText}`,
-            details: error.response.data 
-          }),
-        };
-      } else if (error.request) {
-        // İstek gönderildi ama yanıt alınamadı
-        return {
-          statusCode: 503,
-          headers,
-          body: JSON.stringify({ 
-            error: 'Hugging Face API is not responding',
-            message: 'The service may be temporarily unavailable. Please try again later.'
-          }),
-        };
-      }
-    }
-    
     return {
       statusCode: 500,
       headers,
       body: JSON.stringify({ 
         error: 'Internal server error',
-        message: error instanceof Error ? error.message : 'Unknown error occurred'
+        message: error instanceof Error ? error.message : 'Unknown error occurred',
+        details: (error as any).response?.data || (error as any).message
       }),
     };
   }
