@@ -21,9 +21,9 @@ exports.handler = async (event, context) => {
   // OPTIONS request için CORS preflight
   if (event.httpMethod === 'OPTIONS') {
     return {
-      statusCode: 200,
+      statusCode: 204,
       headers,
-      body: '',
+      body: null,
     };
   }
 
