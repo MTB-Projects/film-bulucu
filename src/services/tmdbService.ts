@@ -30,6 +30,10 @@ export interface TMDBMovieDetails extends TMDBMovie {
   production_companies: Array<{ id: number; name: string }>;
 }
 
+export interface TMDBKeywordsResponse {
+  keywords: Array<{ id: number; name: string }>;
+}
+
 /**
  * TMDB API key'ini environment variable'dan alır
  */
@@ -133,5 +137,25 @@ export async function getPopularMovies(page: number = 1): Promise<TMDBSearchResp
 export function getYearFromDate(dateString: string): number {
   if (!dateString) return new Date().getFullYear();
   return new Date(dateString).getFullYear();
+}
+
+/**
+ * Belirli bir filmin keywords'lerini getirir
+ */
+export async function getMovieKeywords(movieId: number): Promise<string[]> {
+  try {
+    const apiKey = getApiKey();
+    const response = await axios.get<TMDBKeywordsResponse>(`${TMDB_BASE_URL}/movie/${movieId}/keywords`, {
+      params: {
+        api_key: apiKey,
+      },
+    });
+    return response.data.keywords.map(kw => kw.name);
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      console.warn(`TMDB keywords API hatası for movie ${movieId}:`, error.message);
+    }
+    return [];
+  }
 }
 

@@ -4,6 +4,8 @@ import {
   getPopularMovies,
   getPosterUrl,
   getYearFromDate,
+  getMovieKeywords,
+  getMovieDetails,
   TMDBMovie 
 } from './tmdbService';
 
@@ -158,6 +160,60 @@ function cosineSimilarity(vecA: number[], vecB: number[]): number {
 }
 
 /**
+ * Query'nin scene-based olup olmadığını tespit eder
+ * Scene-based query'ler genellikle eylem fiilleri, olaylar ve detaylar içerir
+ */
+function isSceneBasedQuery(query: string): boolean {
+  const sceneIndicators = [
+    'vardı', 'vardi', 'var', 'oldu', 'olduğu', 'yaptı', 'yapti', 'etti', 'ettiği',
+    'gitti', 'geldi', 'düştü', 'düşti', 'battı', 'batti', 'çıktı', 'çıkti',
+    'sahne', 'sahnede', 'sahnede', 'an', 'anda', 'sırada', 'sırasında',
+    'hit', 'hits', 'sink', 'sinks', 'sinking', 'sank', 'crash', 'crashes',
+    'explode', 'explodes', 'fall', 'falls', 'fell', 'die', 'dies', 'died',
+    'kill', 'kills', 'killed', 'scene', 'moment', 'when', 'where'
+  ];
+  
+  const queryLower = query.toLowerCase();
+  return sceneIndicators.some(indicator => queryLower.includes(indicator));
+}
+
+/**
+ * Query'yi genişletir - ilgili anahtar kelimeler ekler
+ * Deterministic ve lightweight yaklaşım
+ */
+function expandQuery(query: string): string {
+  const queryLower = query.toLowerCase();
+  const expandedTerms: string[] = [];
+  
+  // Deterministic keyword mapping
+  const keywordMap: Record<string, string[]> = {
+    'ship': ['ocean', 'water', 'sea', 'vessel', 'sinking', 'disaster'],
+    'gemi': ['deniz', 'su', 'okyanus', 'batma', 'felaket'],
+    'iceberg': ['ice', 'cold', 'titanic', 'collision'],
+    'buzdağı': ['buz', 'soğuk', 'titanik', 'çarpışma'],
+    'sink': ['water', 'ocean', 'drown', 'submerge'],
+    'batma': ['su', 'deniz', 'boğulma'],
+    'palyanço': ['clown', 'horror', 'scary', 'fear', 'korku'],
+    'balon': ['balloon', 'red', 'kırmızı', 'float'],
+    'korku': ['horror', 'scary', 'fear', 'terror'],
+    'horror': ['scary', 'fear', 'terror', 'monster']
+  };
+  
+  // Query'deki kelimeleri kontrol et ve ilgili terimleri ekle
+  Object.keys(keywordMap).forEach(key => {
+    if (queryLower.includes(key)) {
+      expandedTerms.push(...keywordMap[key]);
+    }
+  });
+  
+  // Tekrarları kaldır ve orijinal query'ye ekle
+  const uniqueTerms = Array.from(new Set(expandedTerms));
+  return uniqueTerms.length > 0 
+    ? `${query} ${uniqueTerms.join(' ')}`
+    : query;
+}
+
+/**
  * Basit text matching skoru hesaplar (fallback için)
  */
 function calculateSimpleMatchScore(query: string, movie: TMDBMovie): number {
@@ -287,9 +343,8 @@ export async function searchFilmsByDescription(query: string): Promise<FilmSearc
     const resultsWithScores = await performSemanticMatching(query, moviesToSearch);
     
     // 4. Skora göre sırala ve en iyi sonuçları döndür
-    // Minimum skor eşiği: 30 (daha iyi sonuçlar için)
+    // Similarity threshold (0.65 = 65%) zaten performSemanticMatching içinde uygulanıyor
     return resultsWithScores
-      .filter(result => result.matchScore >= 30)
       .sort((a, b) => b.matchScore - a.matchScore)
       .slice(0, 10); // En fazla 10 sonuç
       
@@ -320,15 +375,93 @@ export async function searchFilmsByDescription(query: string): Promise<FilmSearc
 }
 
 /**
+ * Weighted semantic similarity hesaplar
+ * Farklı alanlar için farklı ağırlıklar kullanır
+ */
+async function calculateWeightedSimilarity(
+  queryEmbedding: number[],
+  movie: TMDBMovie,
+  isSceneBased: boolean
+): Promise<number> {
+  const weights = isSceneBased
+    ? { overview: 0.5, keywords: 0.3, tagline: 0.15, title: 0.05 }
+    : { overview: 0.4, keywords: 0.3, tagline: 0.2, title: 0.1 };
+  
+  let weightedScore = 0;
+  let totalWeight = 0;
+  
+  // Overview/plot summary
+  if (movie.overview) {
+    const overviewEmbedding = await getTextEmbedding(movie.overview);
+    if (overviewEmbedding.length > 0) {
+      const similarity = cosineSimilarity(queryEmbedding, overviewEmbedding);
+      weightedScore += similarity * weights.overview;
+      totalWeight += weights.overview;
+    }
+  }
+  
+  // Keywords
+  try {
+    const keywords = await getMovieKeywords(movie.id);
+    if (keywords.length > 0) {
+      const keywordsText = keywords.join(' ');
+      const keywordsEmbedding = await getTextEmbedding(keywordsText);
+      if (keywordsEmbedding.length > 0) {
+        const similarity = cosineSimilarity(queryEmbedding, keywordsEmbedding);
+        weightedScore += similarity * weights.keywords;
+        totalWeight += weights.keywords;
+      }
+    }
+  } catch (error) {
+    console.warn(`Failed to fetch keywords for movie ${movie.id}:`, error);
+  }
+  
+  // Tagline
+  try {
+    const details = await getMovieDetails(movie.id);
+    if (details.tagline) {
+      const taglineEmbedding = await getTextEmbedding(details.tagline);
+      if (taglineEmbedding.length > 0) {
+        const similarity = cosineSimilarity(queryEmbedding, taglineEmbedding);
+        weightedScore += similarity * weights.tagline;
+        totalWeight += weights.tagline;
+      }
+    }
+  } catch (error) {
+    console.warn(`Failed to fetch tagline for movie ${movie.id}:`, error);
+  }
+  
+  // Title
+  if (movie.title) {
+    const titleEmbedding = await getTextEmbedding(movie.title);
+    if (titleEmbedding.length > 0) {
+      const similarity = cosineSimilarity(queryEmbedding, titleEmbedding);
+      weightedScore += similarity * weights.title;
+      totalWeight += weights.title;
+    }
+  }
+  
+  // Normalize by total weight used
+  return totalWeight > 0 ? weightedScore / totalWeight : 0;
+}
+
+/**
  * Semantic matching ile film skorlarını hesaplar
+ * Weighted similarity ve scene intent detection kullanır
  */
 async function performSemanticMatching(
   query: string, 
   movies: TMDBMovie[]
 ): Promise<FilmSearchResult[]> {
   try {
-    // Query embedding'i al
-    const queryEmbedding = await getTextEmbedding(query);
+    // Scene intent detection
+    const isSceneBased = isSceneBasedQuery(query);
+    
+    // Query expansion
+    const expandedQuery = expandQuery(query);
+    
+    // Query embedding'i al (expanded query ile)
+    const queryEmbedding = await getTextEmbedding(expandedQuery);
     
     // Eğer embedding alınamadıysa, basit matching kullan
     if (queryEmbedding.length === 0) {
@@ -342,44 +475,37 @@ async function performSemanticMatching(
         .map(item => convertTMDBToResult(item.movie, item.score, query));
     }
     
-    // Önce basit matching ile filtrele (daha hızlı)
-    // Bu sayede semantic matching için daha az film kontrol ederiz
+    // Pre-filtering: basit matching ile ilk filtreleme
     const preFiltered = movies
       .map(movie => ({
         movie,
         simpleScore: calculateSimpleMatchScore(query, movie),
       }))
-      .filter(item => item.simpleScore > 5) // Minimum 5 puan alan filmler
+      .filter(item => item.simpleScore > 5)
       .sort((a, b) => b.simpleScore - a.simpleScore)
-      .slice(0, 50); // En iyi 50 filmi semantic matching için seç
+      .slice(0, 50);
     
-    // Eğer pre-filter sonucu yoksa, tüm filmleri kontrol et
     const moviesToCheck = preFiltered.length > 0 
       ? preFiltered.map(item => item.movie)
       : movies.slice(0, 50);
     
-    // Her film için embedding ve similarity hesapla
+    // Her film için weighted similarity hesapla
     const results: Array<{ movie: TMDBMovie; score: number }> = [];
     
     for (const movie of moviesToCheck) {
-      const movieText = `${movie.title} ${movie.overview || ''}`;
-      const movieEmbedding = await getTextEmbedding(movieText);
+      const weightedScore = await calculateWeightedSimilarity(
+        queryEmbedding,
+        movie,
+        isSceneBased
+      );
       
-      if (movieEmbedding.length > 0) {
-        const similarity = cosineSimilarity(queryEmbedding, movieEmbedding);
-        const score = Math.round(similarity * 100);
-        if (score > 0) {
-          results.push({ movie, score });
-        }
-      } else {
-        // Embedding alınamazsa basit matching kullan
-        const simpleScore = calculateSimpleMatchScore(query, movie);
-        if (simpleScore > 0) {
-          results.push({ movie, score: simpleScore });
-        }
+      // Similarity threshold: 0.65 (65%)
+      if (weightedScore >= 0.65) {
+        const score = Math.round(weightedScore * 100);
+        results.push({ movie, score });
       }
       
-      // Rate limiting için küçük bir gecikme (50ms - daha hızlı)
+      // Rate limiting
       await new Promise(resolve => setTimeout(resolve, 50));
     }
     
