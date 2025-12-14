@@ -91,6 +91,7 @@ async function getTextEmbedding(text: string): Promise<number[]> {
   
   // Serverless function üzerinden istek at
   try {
+    console.log(`[Embedding] Calling API: ${apiUrl}`);
     const response = await axios.post(
       apiUrl,
       { text },
@@ -103,34 +104,40 @@ async function getTextEmbedding(text: string): Promise<number[]> {
     );
     
     if (response.data.embedding && Array.isArray(response.data.embedding)) {
+      console.log(`[Embedding] Success: got embedding of length ${response.data.embedding.length}`);
       return response.data.embedding;
     }
     
     // Eski format desteği (direkt array dönüyorsa)
     if (Array.isArray(response.data)) {
+      console.log(`[Embedding] Success: got array embedding of length ${response.data.length}`);
       return response.data;
     }
     
-    console.warn('Unexpected response format from embedding API:', response.data);
+    console.warn('[Embedding] Unexpected response format:', response.data);
     return [];
     
   } catch (error) {
     if (axios.isAxiosError(error)) {
       if (error.response) {
         // API'den hata yanıtı geldi
-        console.warn('Embedding API error:', error.response.status, error.response.data);
+        console.error(`[Embedding] API error ${error.response.status}:`, error.response.data);
+        if (error.response.status === 404) {
+          console.error(`[Embedding] 404 - Endpoint not found: ${apiUrl}`);
+          console.error('[Embedding] Make sure the serverless function is deployed correctly');
+        }
       } else if (error.request) {
         // İstek gönderildi ama yanıt alınamadı
-        console.warn('Embedding API is not responding. Make sure serverless function is deployed.');
+        console.error('[Embedding] No response received. Check network and serverless function deployment.');
       } else {
-        console.warn('Error setting up embedding API request:', error.message);
+        console.error('[Embedding] Request setup error:', error.message);
       }
     } else {
-      console.warn('Unexpected error calling embedding API:', error);
+      console.error('[Embedding] Unexpected error:', error);
     }
     
     // Fallback: Basit eşleştirme kullanılacak
-    console.warn('Falling back to simple text matching');
+    console.warn('[Embedding] Falling back - embedding will be empty');
     return [];
   }
 }
@@ -429,26 +436,41 @@ async function fetchMovieMetadataBatch(movieIds: number[]): Promise<Map<number, 
 async function batchEmbedTexts(texts: string[]): Promise<Map<string, number[]>> {
   const embeddingMap = new Map<string, number[]>();
   
+  if (texts.length === 0) {
+    return embeddingMap;
+  }
+  
   // Process in smaller batches to avoid overwhelming the API
   const batchSize = 5;
+  console.log(`[Embedding] Processing ${texts.length} texts in batches of ${batchSize}`);
+  
   for (let i = 0; i < texts.length; i += batchSize) {
     const batch = texts.slice(i, i + batchSize);
+    console.log(`[Embedding] Batch ${Math.floor(i / batchSize) + 1}: ${batch.length} texts`);
+    
     const promises = batch.map(async (text) => {
       try {
         const embedding = await getTextEmbedding(text);
+        if (embedding.length === 0) {
+          console.warn(`[Embedding] Empty embedding for text: "${text.substring(0, 50)}..."`);
+        }
         return { text, embedding };
       } catch (error) {
-        console.warn(`Failed to embed text:`, error);
+        console.error(`[Embedding] Failed to embed text:`, error);
         return { text, embedding: [] as number[] };
       }
     });
     
     const results = await Promise.all(promises);
+    let successCount = 0;
     results.forEach(({ text, embedding }) => {
       if (embedding.length > 0) {
         embeddingMap.set(text, embedding);
+        successCount++;
       }
     });
+    
+    console.log(`[Embedding] Batch ${Math.floor(i / batchSize) + 1}: ${successCount}/${batch.length} successful`);
     
     // Small delay between batches
     if (i + batchSize < texts.length) {
@@ -456,6 +478,7 @@ async function batchEmbedTexts(texts: string[]): Promise<Map<string, number[]>> 
     }
   }
   
+  console.log(`[Embedding] Total: ${embeddingMap.size}/${texts.length} embeddings successful`);
   return embeddingMap;
 }
 
@@ -519,6 +542,7 @@ function calculateWeightedSimilarity(
   }
   
   // Normalize by total weight used
+  // If no embeddings found, return 0 (will be filtered out)
   return totalWeight > 0 ? weightedScore / totalWeight : 0;
 }
 
@@ -538,10 +562,12 @@ async function performSemanticMatching(
     const expandedQuery = expandQuery(query);
     
     // Query embedding'i al (expanded query ile)
+    console.log(`[Search] Getting query embedding for: "${expandedQuery}"`);
     const queryEmbedding = await getTextEmbedding(expandedQuery);
     
     // Eğer embedding alınamadıysa, basit matching kullan
     if (queryEmbedding.length === 0) {
+      console.warn('[Search] Query embedding failed, falling back to simple matching');
       return movies
         .map(movie => ({
           movie,
@@ -549,8 +575,11 @@ async function performSemanticMatching(
         }))
         .filter(item => item.score > 0)
         .sort((a, b) => b.score - a.score)
+        .slice(0, 10)
         .map(item => convertTMDBToResult(item.movie, item.score, query));
     }
+    
+    console.log(`[Search] Query embedding successful, length: ${queryEmbedding.length}`);
     
     // Pre-filtering: basit matching ile ilk filtreleme
     // Reduced to 20 movies to minimize API calls
@@ -572,8 +601,10 @@ async function performSemanticMatching(
     }
     
     // Batch fetch all movie metadata upfront (parallel)
+    console.log(`[Search] Fetching metadata for ${moviesToCheck.length} movies...`);
     const movieIds = moviesToCheck.map(m => m.id);
     const metadataMap = await fetchMovieMetadataBatch(movieIds);
+    console.log(`[Search] Metadata fetched for ${metadataMap.size} movies`);
     
     // Collect all unique texts that need embedding
     const textsToEmbed = new Set<string>();
@@ -593,10 +624,14 @@ async function performSemanticMatching(
     });
     
     // Batch embed all texts
+    console.log(`[Search] Embedding ${textsToEmbed.size} unique texts...`);
     const embeddings = await batchEmbedTexts(Array.from(textsToEmbed));
+    console.log(`[Search] Successfully embedded ${embeddings.size} texts`);
     
     // Calculate weighted similarity for each movie
     const results: Array<{ movie: TMDBMovie; score: number }> = [];
+    
+    console.log(`[Search] Processing ${moviesToCheck.length} movies, ${textsToEmbed.size} unique texts to embed`);
     
     for (const movie of moviesToCheck) {
       const metadata = metadataMap.get(movie.id) || { keywords: [], tagline: null };
@@ -608,11 +643,34 @@ async function performSemanticMatching(
         isSceneBased
       );
       
-      // Similarity threshold: 0.65 (65%)
-      if (weightedScore >= 0.65) {
+      // Debug: log all scores for troubleshooting
+      console.log(`[Search] ${movie.title}: score=${weightedScore.toFixed(3)} (threshold: 0.35)`);
+      
+      // Similarity threshold: 0.35 (35%) - further lowered to ensure results
+      // This is more permissive but still filters out completely irrelevant matches
+      if (weightedScore >= 0.35) {
         const score = Math.round(weightedScore * 100);
         results.push({ movie, score });
       }
+    }
+    
+    console.log(`[Search] Found ${results.length} results above threshold (0.35)`);
+    
+    // If no weighted results, fall back to simple matching with top results
+    if (results.length === 0) {
+      console.warn('[Search] No weighted results found, falling back to simple matching');
+      const fallbackResults = moviesToCheck
+        .map(movie => ({
+          movie,
+          score: calculateSimpleMatchScore(query, movie),
+        }))
+        .filter(item => item.score > 10) // Lower threshold for fallback
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5)
+        .map(item => convertTMDBToResult(item.movie, item.score, query));
+      
+      console.log(`[Search] Fallback found ${fallbackResults.length} results`);
+      return fallbackResults;
     }
     
     return results.map(item => convertTMDBToResult(item.movie, item.score, query));
