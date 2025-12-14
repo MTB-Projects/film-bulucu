@@ -375,14 +375,101 @@ export async function searchFilmsByDescription(query: string): Promise<FilmSearc
 }
 
 /**
- * Weighted semantic similarity hesaplar
- * Farklı alanlar için farklı ağırlıklar kullanır
+ * Movie metadata interface for caching
  */
-async function calculateWeightedSimilarity(
+interface MovieMetadata {
+  keywords: string[];
+  tagline: string | null;
+}
+
+/**
+ * Batch fetch movie metadata (keywords and tagline) in parallel
+ */
+async function fetchMovieMetadataBatch(movieIds: number[]): Promise<Map<number, MovieMetadata>> {
+  const metadataMap = new Map<number, MovieMetadata>();
+  
+  // Fetch all keywords and details in parallel
+  const promises = movieIds.map(async (id) => {
+    try {
+      const [keywords, details] = await Promise.all([
+        getMovieKeywords(id).catch(() => [] as string[]),
+        getMovieDetails(id).catch(() => null)
+      ]);
+      
+      return {
+        id,
+        metadata: {
+          keywords,
+          tagline: details?.tagline || null
+        }
+      };
+    } catch (error) {
+      console.warn(`Failed to fetch metadata for movie ${id}:`, error);
+      return {
+        id,
+        metadata: {
+          keywords: [],
+          tagline: null
+        }
+      };
+    }
+  });
+  
+  const results = await Promise.all(promises);
+  results.forEach(({ id, metadata }) => {
+    metadataMap.set(id, metadata);
+  });
+  
+  return metadataMap;
+}
+
+/**
+ * Batch embed multiple texts to reduce API calls
+ */
+async function batchEmbedTexts(texts: string[]): Promise<Map<string, number[]>> {
+  const embeddingMap = new Map<string, number[]>();
+  
+  // Process in smaller batches to avoid overwhelming the API
+  const batchSize = 5;
+  for (let i = 0; i < texts.length; i += batchSize) {
+    const batch = texts.slice(i, i + batchSize);
+    const promises = batch.map(async (text) => {
+      try {
+        const embedding = await getTextEmbedding(text);
+        return { text, embedding };
+      } catch (error) {
+        console.warn(`Failed to embed text:`, error);
+        return { text, embedding: [] as number[] };
+      }
+    });
+    
+    const results = await Promise.all(promises);
+    results.forEach(({ text, embedding }) => {
+      if (embedding.length > 0) {
+        embeddingMap.set(text, embedding);
+      }
+    });
+    
+    // Small delay between batches
+    if (i + batchSize < texts.length) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  }
+  
+  return embeddingMap;
+}
+
+/**
+ * Weighted semantic similarity hesaplar
+ * Optimized: uses pre-fetched metadata and batched embeddings
+ */
+function calculateWeightedSimilarity(
   queryEmbedding: number[],
   movie: TMDBMovie,
+  metadata: MovieMetadata,
+  embeddings: Map<string, number[]>,
   isSceneBased: boolean
-): Promise<number> {
+): number {
   const weights = isSceneBased
     ? { overview: 0.5, keywords: 0.3, tagline: 0.15, title: 0.05 }
     : { overview: 0.4, keywords: 0.3, tagline: 0.2, title: 0.1 };
@@ -392,8 +479,8 @@ async function calculateWeightedSimilarity(
   
   // Overview/plot summary
   if (movie.overview) {
-    const overviewEmbedding = await getTextEmbedding(movie.overview);
-    if (overviewEmbedding.length > 0) {
+    const overviewEmbedding = embeddings.get(movie.overview);
+    if (overviewEmbedding && overviewEmbedding.length > 0) {
       const similarity = cosineSimilarity(queryEmbedding, overviewEmbedding);
       weightedScore += similarity * weights.overview;
       totalWeight += weights.overview;
@@ -401,40 +488,30 @@ async function calculateWeightedSimilarity(
   }
   
   // Keywords
-  try {
-    const keywords = await getMovieKeywords(movie.id);
-    if (keywords.length > 0) {
-      const keywordsText = keywords.join(' ');
-      const keywordsEmbedding = await getTextEmbedding(keywordsText);
-      if (keywordsEmbedding.length > 0) {
-        const similarity = cosineSimilarity(queryEmbedding, keywordsEmbedding);
-        weightedScore += similarity * weights.keywords;
-        totalWeight += weights.keywords;
-      }
+  if (metadata.keywords.length > 0) {
+    const keywordsText = metadata.keywords.join(' ');
+    const keywordsEmbedding = embeddings.get(keywordsText);
+    if (keywordsEmbedding && keywordsEmbedding.length > 0) {
+      const similarity = cosineSimilarity(queryEmbedding, keywordsEmbedding);
+      weightedScore += similarity * weights.keywords;
+      totalWeight += weights.keywords;
     }
-  } catch (error) {
-    console.warn(`Failed to fetch keywords for movie ${movie.id}:`, error);
   }
   
   // Tagline
-  try {
-    const details = await getMovieDetails(movie.id);
-    if (details.tagline) {
-      const taglineEmbedding = await getTextEmbedding(details.tagline);
-      if (taglineEmbedding.length > 0) {
-        const similarity = cosineSimilarity(queryEmbedding, taglineEmbedding);
-        weightedScore += similarity * weights.tagline;
-        totalWeight += weights.tagline;
-      }
+  if (metadata.tagline) {
+    const taglineEmbedding = embeddings.get(metadata.tagline);
+    if (taglineEmbedding && taglineEmbedding.length > 0) {
+      const similarity = cosineSimilarity(queryEmbedding, taglineEmbedding);
+      weightedScore += similarity * weights.tagline;
+      totalWeight += weights.tagline;
     }
-  } catch (error) {
-    console.warn(`Failed to fetch tagline for movie ${movie.id}:`, error);
   }
   
   // Title
   if (movie.title) {
-    const titleEmbedding = await getTextEmbedding(movie.title);
-    if (titleEmbedding.length > 0) {
+    const titleEmbedding = embeddings.get(movie.title);
+    if (titleEmbedding && titleEmbedding.length > 0) {
       const similarity = cosineSimilarity(queryEmbedding, titleEmbedding);
       weightedScore += similarity * weights.title;
       totalWeight += weights.title;
@@ -476,6 +553,7 @@ async function performSemanticMatching(
     }
     
     // Pre-filtering: basit matching ile ilk filtreleme
+    // Reduced to 20 movies to minimize API calls
     const preFiltered = movies
       .map(movie => ({
         movie,
@@ -483,19 +561,50 @@ async function performSemanticMatching(
       }))
       .filter(item => item.simpleScore > 5)
       .sort((a, b) => b.simpleScore - a.simpleScore)
-      .slice(0, 50);
+      .slice(0, 20);
     
     const moviesToCheck = preFiltered.length > 0 
       ? preFiltered.map(item => item.movie)
-      : movies.slice(0, 50);
+      : movies.slice(0, 20);
     
-    // Her film için weighted similarity hesapla
+    if (moviesToCheck.length === 0) {
+      return [];
+    }
+    
+    // Batch fetch all movie metadata upfront (parallel)
+    const movieIds = moviesToCheck.map(m => m.id);
+    const metadataMap = await fetchMovieMetadataBatch(movieIds);
+    
+    // Collect all unique texts that need embedding
+    const textsToEmbed = new Set<string>();
+    moviesToCheck.forEach(movie => {
+      if (movie.overview) textsToEmbed.add(movie.overview);
+      if (movie.title) textsToEmbed.add(movie.title);
+      
+      const metadata = metadataMap.get(movie.id);
+      if (metadata) {
+        if (metadata.keywords.length > 0) {
+          textsToEmbed.add(metadata.keywords.join(' '));
+        }
+        if (metadata.tagline) {
+          textsToEmbed.add(metadata.tagline);
+        }
+      }
+    });
+    
+    // Batch embed all texts
+    const embeddings = await batchEmbedTexts(Array.from(textsToEmbed));
+    
+    // Calculate weighted similarity for each movie
     const results: Array<{ movie: TMDBMovie; score: number }> = [];
     
     for (const movie of moviesToCheck) {
-      const weightedScore = await calculateWeightedSimilarity(
+      const metadata = metadataMap.get(movie.id) || { keywords: [], tagline: null };
+      const weightedScore = calculateWeightedSimilarity(
         queryEmbedding,
         movie,
+        metadata,
+        embeddings,
         isSceneBased
       );
       
@@ -504,9 +613,6 @@ async function performSemanticMatching(
         const score = Math.round(weightedScore * 100);
         results.push({ movie, score });
       }
-      
-      // Rate limiting
-      await new Promise(resolve => setTimeout(resolve, 50));
     }
     
     return results.map(item => convertTMDBToResult(item.movie, item.score, query));
