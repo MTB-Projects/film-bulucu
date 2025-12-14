@@ -303,24 +303,32 @@ function convertTMDBToResult(movie: TMDBMovie, matchScore: number, query: string
  */
 export async function searchFilmsByDescription(query: string): Promise<FilmSearchResult[]> {
   try {
-    // 1. Önce TMDB'de anahtar kelimelerle arama yap (daha iyi sonuç için)
-    // Query'den önemli kelimeleri çıkar (3+ harfli kelimeler)
+    // 1. Önce TMDB'de direkt arama yap (tüm query ile)
+    let allMovies: TMDBMovie[] = [];
+    
+    try {
+      // Önce tüm query ile arama yap
+      const directSearch = await searchMovies(query, 1);
+      allMovies = [...allMovies, ...directSearch.results];
+      console.log(`[Search] Direct TMDB search found ${directSearch.results.length} results`);
+    } catch (err) {
+      console.warn(`[Search] Direct TMDB search failed:`, err);
+    }
+    
+    // 2. Anahtar kelimelerle de arama yap (daha iyi sonuç için)
     const queryWords = query.toLowerCase()
       .split(/\s+/)
       .filter(word => word.length >= 3)
-      .filter(word => !['bir', 'var', 'vardı', 'film', 'filmi', 'filmdir', 'olan', 'ile', 'için'].includes(word));
+      .filter(word => !['bir', 'var', 'vardı', 'film', 'filmi', 'filmdir', 'olan', 'ile', 'için', 've', 'ile'].includes(word));
     
-    // Anahtar kelimelerle TMDB'de arama yap
-    let allMovies: TMDBMovie[] = [];
-    
-    // Her anahtar kelime için arama yap ve sonuçları birleştir
-    for (const keyword of queryWords.slice(0, 3)) { // En fazla 3 anahtar kelime
+    // Önemli anahtar kelimelerle TMDB'de arama yap
+    for (const keyword of queryWords.slice(0, 3)) {
       try {
         const searchResults = await searchMovies(keyword, 1);
         allMovies = [...allMovies, ...searchResults.results];
+        console.log(`[Search] Keyword "${keyword}" search found ${searchResults.results.length} results`);
       } catch (err) {
-        // Bir kelime için arama başarısız olursa devam et
-        console.warn(`TMDB search failed for keyword "${keyword}":`, err);
+        console.warn(`[Search] TMDB search failed for keyword "${keyword}":`, err);
       }
     }
     
@@ -581,20 +589,20 @@ async function performSemanticMatching(
     
     console.log(`[Search] Query embedding successful, length: ${queryEmbedding.length}`);
     
-    // Pre-filtering: basit matching ile ilk filtreleme
-    // Reduced to 20 movies to minimize API calls
+    // Pre-filtering: çok gevşek filtreleme - sadece tamamen alakasız olanları eliyoruz
+    // Daha fazla filmi semantic matching'e dahil etmek için threshold'u düşürdük
     const preFiltered = movies
       .map(movie => ({
         movie,
         simpleScore: calculateSimpleMatchScore(query, movie),
       }))
-      .filter(item => item.simpleScore > 5)
+      .filter(item => item.simpleScore >= 0) // Tüm filmleri dahil et
       .sort((a, b) => b.simpleScore - a.simpleScore)
-      .slice(0, 20);
+      .slice(0, 30); // 30 filme çıkardık - daha fazla şans için
     
     const moviesToCheck = preFiltered.length > 0 
       ? preFiltered.map(item => item.movie)
-      : movies.slice(0, 20);
+      : movies.slice(0, 30);
     
     if (moviesToCheck.length === 0) {
       return [];
@@ -644,29 +652,35 @@ async function performSemanticMatching(
       );
       
       // Debug: log all scores for troubleshooting
-      console.log(`[Search] ${movie.title}: score=${weightedScore.toFixed(3)} (threshold: 0.35)`);
+      console.log(`[Search] ${movie.title}: score=${weightedScore.toFixed(3)} (threshold: 0.25)`);
       
-      // Similarity threshold: 0.35 (35%) - further lowered to ensure results
-      // This is more permissive but still filters out completely irrelevant matches
-      if (weightedScore >= 0.35) {
+      // Similarity threshold: 0.25 (25%) - significantly lowered
+      // Semantic similarity scores are typically lower than expected
+      // 0.25 still filters out completely random matches while allowing relevant ones
+      if (weightedScore >= 0.25) {
         const score = Math.round(weightedScore * 100);
         results.push({ movie, score });
       }
     }
     
-    console.log(`[Search] Found ${results.length} results above threshold (0.35)`);
+    console.log(`[Search] Found ${results.length} results above threshold (0.25)`);
     
     // If no weighted results, fall back to simple matching with top results
+    // But also try to find movies with higher simple scores
     if (results.length === 0) {
       console.warn('[Search] No weighted results found, falling back to simple matching');
-      const fallbackResults = moviesToCheck
+      
+      // Get all movies (not just pre-filtered) for better fallback
+      const allMoviesScored = movies
         .map(movie => ({
           movie,
           score: calculateSimpleMatchScore(query, movie),
         }))
-        .filter(item => item.score > 10) // Lower threshold for fallback
+        .filter(item => item.score > 5)
         .sort((a, b) => b.score - a.score)
-        .slice(0, 5)
+        .slice(0, 10);
+      
+      const fallbackResults = allMoviesScored
         .map(item => convertTMDBToResult(item.movie, item.score, query));
       
       console.log(`[Search] Fallback found ${fallbackResults.length} results`);
