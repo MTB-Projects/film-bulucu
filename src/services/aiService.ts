@@ -192,18 +192,21 @@ function expandQuery(query: string): string {
   const queryLower = query.toLowerCase();
   const expandedTerms: string[] = [];
   
-  // Deterministic keyword mapping
+  // Deterministic keyword mapping - önemli film isimlerini de ekle
   const keywordMap: Record<string, string[]> = {
-    'ship': ['ocean', 'water', 'sea', 'vessel', 'sinking', 'disaster'],
-    'gemi': ['deniz', 'su', 'okyanus', 'batma', 'felaket'],
-    'iceberg': ['ice', 'cold', 'titanic', 'collision'],
-    'buzdağı': ['buz', 'soğuk', 'titanik', 'çarpışma'],
-    'sink': ['water', 'ocean', 'drown', 'submerge'],
-    'batma': ['su', 'deniz', 'boğulma'],
-    'palyanço': ['clown', 'horror', 'scary', 'fear', 'korku'],
-    'balon': ['balloon', 'red', 'kırmızı', 'float'],
+    'ship': ['ocean', 'water', 'sea', 'vessel', 'sinking', 'disaster', 'titanic'],
+    'gemi': ['deniz', 'su', 'okyanus', 'batma', 'felaket', 'titanik'],
+    'iceberg': ['ice', 'cold', 'titanic', 'collision', 'ship', 'sinking'],
+    'buzdağı': ['buz', 'soğuk', 'titanik', 'çarpışma', 'gemi', 'batma'],
+    'sink': ['water', 'ocean', 'drown', 'submerge', 'titanic', 'ship'],
+    'batma': ['su', 'deniz', 'boğulma', 'titanik', 'gemi'],
+    'palyanço': ['clown', 'horror', 'scary', 'fear', 'korku', 'it'],
+    'balon': ['balloon', 'red', 'kırmızı', 'float', 'clown', 'it'],
     'korku': ['horror', 'scary', 'fear', 'terror'],
-    'horror': ['scary', 'fear', 'terror', 'monster']
+    'horror': ['scary', 'fear', 'terror', 'monster'],
+    'matrix': ['blue pill', 'red pill', 'neo', 'trinity'],
+    'rüya': ['dream', 'inception', 'layer', 'subconscious'],
+    'dream': ['inception', 'layer', 'subconscious', 'sleep']
   };
   
   // Query'deki kelimeleri kontrol et ve ilgili terimleri ekle
@@ -212,6 +215,14 @@ function expandQuery(query: string): string {
       expandedTerms.push(...keywordMap[key]);
     }
   });
+  
+  // Özel durumlar: eğer query'de "gemi" ve "battı" varsa "titanic" ekle
+  if ((queryLower.includes('gemi') || queryLower.includes('ship')) && 
+      (queryLower.includes('battı') || queryLower.includes('sink') || queryLower.includes('batma'))) {
+    if (!expandedTerms.includes('titanic') && !expandedTerms.includes('titanik')) {
+      expandedTerms.push('titanic', 'titanik');
+    }
+  }
   
   // Tekrarları kaldır ve orijinal query'ye ekle
   const uniqueTerms = Array.from(new Set(expandedTerms));
@@ -300,6 +311,9 @@ function convertTMDBToResult(movie: TMDBMovie, matchScore: number, query: string
  * Film açıklamasına göre arama yapar ve eşleşen filmleri döndürür
  * @param query Kullanıcının girdiği film açıklaması
  * @returns Bulunan filmlerin listesi
+ * 
+ * NOTE: New scene-based pipeline available in sceneSearchPipeline.ts
+ * This function is kept for backward compatibility
  */
 export async function searchFilmsByDescription(query: string): Promise<FilmSearchResult[]> {
   try {
@@ -315,20 +329,56 @@ export async function searchFilmsByDescription(query: string): Promise<FilmSearc
       console.warn(`[Search] Direct TMDB search failed:`, err);
     }
     
-    // 2. Anahtar kelimelerle de arama yap (daha iyi sonuç için)
+    // 2. Önemli film isimleri ve anahtar kelimelerle arama yap
+    const queryLower = query.toLowerCase();
+    const importantKeywords: string[] = [];
+    
+    // Önemli film isimlerini kontrol et
+    if (queryLower.includes('titanic') || queryLower.includes('titanik') || 
+        (queryLower.includes('gemi') && queryLower.includes('battı')) ||
+        (queryLower.includes('ship') && queryLower.includes('sink'))) {
+      importantKeywords.push('titanic');
+    }
+    
+    if (queryLower.includes('matrix') || queryLower.includes('mavi hap') || queryLower.includes('red pill')) {
+      importantKeywords.push('matrix');
+    }
+    
+    if (queryLower.includes('inception') || queryLower.includes('rüya içinde rüya')) {
+      importantKeywords.push('inception');
+    }
+    
+    if (queryLower.includes('it') || (queryLower.includes('palyanço') && queryLower.includes('kırmızı'))) {
+      importantKeywords.push('it');
+    }
+    
+    // Anahtar kelimeleri çıkar
     const queryWords = query.toLowerCase()
       .split(/\s+/)
       .filter(word => word.length >= 3)
-      .filter(word => !['bir', 'var', 'vardı', 'film', 'filmi', 'filmdir', 'olan', 'ile', 'için', 've', 'ile'].includes(word));
+      .filter(word => !['bir', 'var', 'vardı', 'film', 'filmi', 'filmdir', 'olan', 'ile', 'için', 've', 'ile', 'aşk'].includes(word));
     
-    // Önemli anahtar kelimelerle TMDB'de arama yap
-    for (const keyword of queryWords.slice(0, 3)) {
+    // Önce önemli film isimleriyle arama yap
+    for (const keyword of importantKeywords) {
       try {
         const searchResults = await searchMovies(keyword, 1);
         allMovies = [...allMovies, ...searchResults.results];
-        console.log(`[Search] Keyword "${keyword}" search found ${searchResults.results.length} results`);
+        console.log(`[Search] Important keyword "${keyword}" search found ${searchResults.results.length} results`);
       } catch (err) {
-        console.warn(`[Search] TMDB search failed for keyword "${keyword}":`, err);
+        console.warn(`[Search] TMDB search failed for important keyword "${keyword}":`, err);
+      }
+    }
+    
+    // Sonra diğer anahtar kelimelerle arama yap
+    for (const keyword of queryWords.slice(0, 3)) {
+      if (!importantKeywords.includes(keyword)) {
+        try {
+          const searchResults = await searchMovies(keyword, 1);
+          allMovies = [...allMovies, ...searchResults.results];
+          console.log(`[Search] Keyword "${keyword}" search found ${searchResults.results.length} results`);
+        } catch (err) {
+          console.warn(`[Search] TMDB search failed for keyword "${keyword}":`, err);
+        }
       }
     }
     
@@ -652,18 +702,18 @@ async function performSemanticMatching(
       );
       
       // Debug: log all scores for troubleshooting
-      console.log(`[Search] ${movie.title}: score=${weightedScore.toFixed(3)} (threshold: 0.25)`);
+      console.log(`[Search] ${movie.title}: score=${weightedScore.toFixed(3)} (threshold: 0.20)`);
       
-      // Similarity threshold: 0.25 (25%) - significantly lowered
+      // Similarity threshold: 0.20 (20%) - very permissive
       // Semantic similarity scores are typically lower than expected
-      // 0.25 still filters out completely random matches while allowing relevant ones
-      if (weightedScore >= 0.25) {
+      // 0.20 allows more results while still filtering out completely random matches
+      if (weightedScore >= 0.20) {
         const score = Math.round(weightedScore * 100);
         results.push({ movie, score });
       }
     }
     
-    console.log(`[Search] Found ${results.length} results above threshold (0.25)`);
+    console.log(`[Search] Found ${results.length} results above threshold (0.20)`);
     
     // If no weighted results, fall back to simple matching with top results
     // But also try to find movies with higher simple scores

@@ -47,7 +47,7 @@ exports.handler = async (event, context) => {
     };
   }
 
-  const { text } = body;
+  const { text, model } = body;
 
   // Text validation
   if (!text || typeof text !== 'string' || text.trim().length === 0) {
@@ -60,7 +60,9 @@ exports.handler = async (event, context) => {
 
   try {
     const apiKey = process.env.VITE_HUGGING_FACE_API_KEY || process.env.HUGGING_FACE_API_KEY;
-    const model = 'sentence-transformers/all-MiniLM-L6-v2';
+    // Support model parameter for better embeddings (default to e5-base-v2)
+    const requestedModel = body.model || 'intfloat/e5-base-v2';
+    const model = requestedModel; // Use requested model or fallback to e5
     
     // Inference Providers API için Inference Client SDK kullan
     const hf = new HfInference(apiKey);
