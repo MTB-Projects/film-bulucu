@@ -39,14 +39,6 @@ const SearchForm = ({ onSearch, isSearching }: SearchFormProps) => {
           )}
         </button>
       </form>
-      <div className="search-examples">
-        <p>Örnek aramalar:</p>
-        <ul className="examples-list">
-          <li>Bir adamın kırmızı pilli lambayı yere koyup uzaylıları çağırdığı film</li>
-          <li>Kadın karakterin "bunu yapmayı bırak" dediği sahne</li>
-          <li>Bir geminin battığı ve erkek karakterin öldüğü aşk filmi</li>
-        </ul>
-      </div>
     </div>
   )
 }

@@ -56,19 +56,12 @@ const SearchResultsPage = () => {
     }
   }, [navigate])
   
-  const handleMovieDetails = async (movieId: number) => {
-    try {
-      const details = await getMovieDetails(movieId)
-      // Film detayları için yeni bir sayfa oluşturulabilir veya modal gösterilebilir
-      // Şimdilik TMDB sayfasına yönlendiriyoruz
-      window.open(`https://www.themoviedb.org/movie/${movieId}`, '_blank')
-    } catch (err) {
-      console.error('Film detayları alınamadı:', err)
-      alert('Film detayları yüklenirken bir hata oluştu.')
-    }
+  const handleMovieDetails = (movieId: number) => {
+    // Film detayları için TMDB sayfasına yönlendir
+    window.open(`https://www.themoviedb.org/movie/${movieId}`, '_blank')
   }
   
-  const handleWatchTrailer = (movieId: number, title: string) => {
+  const handleWatchTrailer = (_movieId: number, title: string) => {
     // TMDB'den video bilgileri çekilebilir, şimdilik YouTube'da arama yapıyoruz
     const searchQuery = encodeURIComponent(`${title} trailer`)
     window.open(`https://www.youtube.com/results?search_query=${searchQuery}`, '_blank')
@@ -105,8 +98,15 @@ const SearchResultsPage = () => {
           </div>
         )}
         
+        {isSearching && (
+          <div className="loading-container">
+            <div className="loading-spinner-large"></div>
+            <p className="loading-text">Filmler aranıyor, lütfen bekleyin...</p>
+          </div>
+        )}
+        
         <div className="results-container">
-          {results.length > 0 ? (
+          {!isSearching && results.length > 0 ? (
             <div className="results-list">
               {results.map(result => (
                 <div key={result.id} className="result-card">
@@ -151,13 +151,13 @@ const SearchResultsPage = () => {
                 </div>
               ))}
             </div>
-          ) : (
+          ) : !isSearching ? (
             <div className="no-results">
               <h2>Aramanızla eşleşen film bulunamadı.</h2>
               <p>Lütfen farklı bir film sahnesi veya detayı ile tekrar deneyin.</p>
               <Link to="/" className="btn">Ana Sayfaya Dön</Link>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </div>
