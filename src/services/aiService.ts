@@ -519,6 +519,7 @@ function calculateWeightedSimilarity(
   }
   
   // Normalize by total weight used
+  // If no embeddings found, return 0 (will be filtered out)
   return totalWeight > 0 ? weightedScore / totalWeight : 0;
 }
 
@@ -598,6 +599,8 @@ async function performSemanticMatching(
     // Calculate weighted similarity for each movie
     const results: Array<{ movie: TMDBMovie; score: number }> = [];
     
+    console.log(`[Search] Processing ${moviesToCheck.length} movies, ${textsToEmbed.size} unique texts to embed`);
+    
     for (const movie of moviesToCheck) {
       const metadata = metadataMap.get(movie.id) || { keywords: [], tagline: null };
       const weightedScore = calculateWeightedSimilarity(
@@ -608,12 +611,20 @@ async function performSemanticMatching(
         isSceneBased
       );
       
-      // Similarity threshold: 0.65 (65%)
-      if (weightedScore >= 0.65) {
+      // Debug: log scores for troubleshooting
+      if (weightedScore > 0.3) {
+        console.log(`[Search] ${movie.title}: score=${weightedScore.toFixed(3)} (threshold: 0.45)`);
+      }
+      
+      // Similarity threshold: 0.45 (45%) - lowered for better recall
+      // Still filters out very irrelevant results while allowing good matches
+      if (weightedScore >= 0.45) {
         const score = Math.round(weightedScore * 100);
         results.push({ movie, score });
       }
     }
+    
+    console.log(`[Search] Found ${results.length} results above threshold`);
     
     return results.map(item => convertTMDBToResult(item.movie, item.score, query));
     
