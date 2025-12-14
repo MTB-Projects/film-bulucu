@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useLocation, Link, useNavigate } from 'react-router-dom'
 import SearchForm from '../components/SearchForm'
 import '../styles/SearchResultsPage.css'
-import { searchFilmsByDescription, FilmSearchResult } from '../services/aiService'
-import { getMovieDetails } from '../services/tmdbService'
+import { FilmSearchResult } from '../services/aiService'
+import { searchFilmsByScene } from '../services/sceneSearchPipeline'
 
 interface LocationState {
   query?: string
@@ -34,11 +34,26 @@ const SearchResultsPage = () => {
     navigate('/search-results', { state: { query }, replace: true })
     
     try {
-      const searchResults = await searchFilmsByDescription(query)
-      if (searchResults.length === 0) {
+      // Use new scene-based pipeline
+      const searchResults = await searchFilmsByScene(query)
+      
+      // Convert to old format for compatibility
+      const convertedResults: FilmSearchResult[] = searchResults.map(result => ({
+        id: result.id,
+        title: result.title,
+        year: result.year,
+        description: result.description,
+        matchScore: result.matchScore,
+        scenes: result.explanation ? [result.explanation] : [],
+        posterUrl: result.posterUrl,
+        backdropUrl: result.backdropUrl,
+        voteAverage: result.voteAverage,
+      }))
+      
+      if (convertedResults.length === 0) {
         setError("Aramanızla eşleşen film bulunamadı. Lütfen farklı kelimeler veya daha detaylı bir açıklama deneyin.")
       } else {
-        setResults(searchResults)
+        setResults(convertedResults)
       }
     } catch (err) {
       console.error("Film arama hatası:", err)

@@ -19,7 +19,7 @@ export default async function handler(
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { text } = req.body;
+  const { text, model } = req.body;
 
   // Text validation
   if (!text || typeof text !== 'string' || text.trim().length === 0) {
@@ -28,7 +28,7 @@ export default async function handler(
 
   try {
     const apiKey = process.env.VITE_HUGGING_FACE_API_KEY || process.env.HUGGING_FACE_API_KEY;
-    const model = 'sentence-transformers/all-MiniLM-L6-v2';
+    const embeddingModel = model || 'intfloat/e5-base-v2';
     
     // Inference Providers API için Inference Client SDK kullan
     const hf = new HfInference(apiKey);
@@ -36,7 +36,7 @@ export default async function handler(
     // Feature extraction için Inference Providers API kullan
     // HF Inference provider'ı kullan (feature extraction destekliyor)
     const embedding = await hf.featureExtraction({
-      model: model,
+      model: embeddingModel,
       inputs: text,
     });
     

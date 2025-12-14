@@ -27,7 +27,11 @@ Proje kök dizininde `.env` dosyası oluşturun:
 # TMDB API key almak için: https://www.themoviedb.org/settings/api
 VITE_TMDB_API_KEY=your_tmdb_api_key_here
 
-# Hugging Face API Key (Opsiyonel)
+# OpenAI API Key (Zorunlu - Yeni Pipeline için)
+# OpenAI API key almak için: https://platform.openai.com/api-keys
+VITE_OPENAI_API_KEY=your_openai_api_key_here
+
+# Hugging Face API Key (Zorunlu)
 # Hugging Face token almak için: https://huggingface.co/settings/tokens
 VITE_HUGGING_FACE_API_KEY=your_hugging_face_token_here
 ```
@@ -41,13 +45,27 @@ VITE_HUGGING_FACE_API_KEY=your_hugging_face_token_here
 5. Formu doldurup API key'inizi alın
 6. `.env` dosyasına `VITE_TMDB_API_KEY` olarak ekleyin
 
-#### Hugging Face Token (Opsiyonel)
+#### OpenAI API Key (Zorunlu - Yeni Pipeline)
 
-Hugging Face token olmadan da çalışır, ancak daha iyi sonuçlar için:
+Yeni scene-based pipeline için OpenAI API key gereklidir:
+
+1. [OpenAI Platform](https://platform.openai.com/) sitesine gidin
+2. Hesap oluşturun veya giriş yapın
+3. [API Keys](https://platform.openai.com/api-keys) sayfasına gidin
+4. "Create new secret key" butonuna tıklayın
+5. Key'e bir isim verin (örn: "Film Bulucu")
+6. Key'i kopyalayın ve `.env` dosyasına `VITE_OPENAI_API_KEY` olarak ekleyin
+7. **Önemli:** Key'i bir daha göremeyeceğiniz için güvenli bir yere kaydedin
+
+**Not:** OpenAI API ücretlidir, ancak gpt-4o-mini modeli çok uygun fiyatlıdır (~$0.01-0.02 per search)
+
+#### Hugging Face Token (Zorunlu)
+
+Embedding'ler için Hugging Face token gereklidir:
 
 1. [Hugging Face](https://huggingface.co/) sitesine kaydolun
 2. [Settings > Tokens](https://huggingface.co/settings/tokens) sayfasına gidin
-3. Yeni bir token oluşturun
+3. Yeni bir token oluşturun (Read permission yeterli)
 4. `.env` dosyasına `VITE_HUGGING_FACE_API_KEY` olarak ekleyin
 
 ### 3. Development Server'ı Başlatın
