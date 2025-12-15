@@ -27,10 +27,6 @@ Proje kök dizininde `.env` dosyası oluşturun:
 # TMDB API key almak için: https://www.themoviedb.org/settings/api
 VITE_TMDB_API_KEY=your_tmdb_api_key_here
 
-# OpenAI API Key (Zorunlu - Yeni Pipeline için)
-# OpenAI API key almak için: https://platform.openai.com/api-keys
-VITE_OPENAI_API_KEY=your_openai_api_key_here
-
 # Hugging Face API Key (Zorunlu)
 # Hugging Face token almak için: https://huggingface.co/settings/tokens
 VITE_HUGGING_FACE_API_KEY=your_hugging_face_token_here
@@ -45,20 +41,6 @@ VITE_HUGGING_FACE_API_KEY=your_hugging_face_token_here
 5. Formu doldurup API key'inizi alın
 6. `.env` dosyasına `VITE_TMDB_API_KEY` olarak ekleyin
 
-#### OpenAI API Key (Zorunlu - Yeni Pipeline)
-
-Yeni scene-based pipeline için OpenAI API key gereklidir:
-
-1. [OpenAI Platform](https://platform.openai.com/) sitesine gidin
-2. Hesap oluşturun veya giriş yapın
-3. [API Keys](https://platform.openai.com/api-keys) sayfasına gidin
-4. "Create new secret key" butonuna tıklayın
-5. Key'e bir isim verin (örn: "Film Bulucu")
-6. Key'i kopyalayın ve `.env` dosyasına `VITE_OPENAI_API_KEY` olarak ekleyin
-7. **Önemli:** Key'i bir daha göremeyeceğiniz için güvenli bir yere kaydedin
-
-**Not:** OpenAI API ücretlidir, ancak gpt-4o-mini modeli çok uygun fiyatlıdır (~$0.01-0.02 per search)
-
 #### Hugging Face Token (Zorunlu)
 
 Embedding'ler için Hugging Face token gereklidir:
@@ -70,7 +52,29 @@ Embedding'ler için Hugging Face token gereklidir:
 
 ### 3. Development Server'ı Başlatın
 
+#### Seçenek 1: Vercel CLI ile (Önerilen)
+
 ```bash
+# Terminal 1: Vercel CLI
+npm install -g vercel
+vercel login
+vercel link
+vercel dev
+
+# Terminal 2: Vite dev server
+npm run dev
+```
+
+#### Seçenek 2: Local Server ile
+
+```bash
+# Gerekli paketleri yükleyin (ilk kez)
+npm install express cors dotenv
+
+# Terminal 1: Local embedding server
+npm run local-server
+
+# Terminal 2: Vite dev server
 npm run dev
 ```
 
@@ -117,51 +121,90 @@ Uygulama http://localhost:3000 adresinde çalışacaktır.
    - `VITE_HUGGING_FACE_API_KEY` veya `HUGGING_FACE_API_KEY`: Hugging Face API key'iniz (opsiyonel)
 3. Vercel otomatik olarak `api/embedding.ts` serverless function'ını deploy edecek
 
-### Netlify Deployment
-
-1. Projeyi Netlify'e push edin veya GitHub'dan bağlayın
-2. **Environment Variables Ayarlama (ÖNEMLİ):**
-   
-   Netlify Dashboard'da:
-   - Site ayarlarına gidin (Site settings)
-   - "Environment variables" bölümüne tıklayın
-   - Aşağıdaki değişkenleri ekleyin:
-   
-   **Zorunlu:**
-   - `VITE_TMDB_API_KEY` = `bf8044b88cb2bdd0eff616966d255569` (TMDB API key'iniz)
-   
-   **Opsiyonel (daha iyi sonuçlar için):**
-   - `VITE_HUGGING_FACE_API_KEY` veya `HUGGING_FACE_API_KEY` = Hugging Face token'ınız
-   
-3. **Değişkenleri ekledikten sonra:**
-   - "Deploy settings" > "Trigger deploy" > "Clear cache and deploy site" yapın
-   - Veya yeni bir commit push edin
-   
-4. Netlify otomatik olarak `netlify/functions/embedding.ts` serverless function'ını deploy edecek
-
-**Not:** Environment variable'ları ekledikten sonra mutlaka yeni bir deploy yapın, aksi halde değişkenler build sırasında kullanılmaz.
-
 ### Local Development
 
-Local development için serverless function'ları test etmek isterseniz:
+Local development için iki seçenek var:
 
-**Vercel CLI ile:**
-```bash
-npm install -g vercel
-vercel dev
-```
+#### Seçenek 1: Vercel CLI ile (Önerilen)
 
-**Netlify CLI ile:**
-```bash
-npm install -g netlify-cli
-netlify dev
-```
+1. Vercel CLI'yi yükleyin:
+   ```bash
+   npm install -g vercel
+   ```
 
-Vite dev server'ı başlattığınızda (`npm run dev`), proxy ayarları sayesinde serverless function'lara erişebilirsiniz.
+2. Vercel'e login olun:
+   ```bash
+   vercel login
+   ```
+
+3. Projeyi link edin:
+   ```bash
+   vercel link
+   ```
+
+4. Development server'ı başlatın:
+   ```bash
+   vercel dev
+   ```
+
+5. Başka bir terminal'de Vite dev server'ı başlatın:
+   ```bash
+   npm run dev
+   ```
+
+Bu şekilde `/api/embedding` endpoint'i Vercel CLI üzerinden çalışacak.
+
+#### Seçenek 2: Basit Local Server (Alternatif)
+
+Eğer Vercel CLI kullanmak istemiyorsanız, basit bir Express server oluşturabilirsiniz:
+
+1. `local-server.js` dosyası oluşturun (proje kök dizininde):
+   ```javascript
+   const express = require('express');
+   const cors = require('cors');
+   const { HfInference } = require('@huggingface/inference');
+   require('dotenv').config();
+
+   const app = express();
+   app.use(cors());
+   app.use(express.json());
+
+   app.post('/api/embedding', async (req, res) => {
+     try {
+       const { text, model = 'intfloat/e5-base-v2' } = req.body;
+       const hf = new HfInference(process.env.VITE_HUGGING_FACE_API_KEY);
+       const embedding = await hf.featureExtraction({ model, inputs: text });
+       res.json({ embedding });
+     } catch (error) {
+       res.status(500).json({ error: error.message });
+     }
+   });
+
+   app.listen(8888, () => console.log('Local embedding server running on :8888'));
+   ```
+
+2. Gerekli paketleri yükleyin:
+   ```bash
+   npm install express cors dotenv @huggingface/inference
+   ```
+
+3. Server'ı başlatın:
+   ```bash
+   node local-server.js
+   ```
+
+4. Vite dev server'ı başlatın (başka terminal'de):
+   ```bash
+   npm run dev
+   ```
+
 
 ### CORS Sorunu
 
-Browser'dan direkt Hugging Face API'ye istek atılamaz (CORS hatası). Bu sorunu çözmek için serverless function'lar kullanılmaktadır. Production'da Vercel veya Netlify'e deploy edildiğinde otomatik çalışır.
+Browser'dan direkt Hugging Face API'ye istek atılamaz (CORS hatası). Bu sorunu çözmek için:
+
+- **Local development:** `local-server.js` veya Vercel CLI kullanın
+- **Production:** Vercel'e deploy edildiğinde `api/embedding.ts` serverless function otomatik çalışır
 
 ## Build
 

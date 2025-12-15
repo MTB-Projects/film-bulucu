@@ -30,17 +30,6 @@ VITE_OPENAI_API_KEY=sk-proj-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 3. Key'i `sk-proj-` ile başlayan değerle değiştirin
 
-#### Netlify Deployment
-
-1. Netlify dashboard'a gidin: https://app.netlify.com
-2. Projenizi seçin
-3. **Site settings** → **Environment variables**
-4. **Add variable** butonuna tıklayın
-5. **Key:** `VITE_OPENAI_API_KEY`
-6. **Value:** API key'inizi yapıştırın
-7. **Save** butonuna tıklayın
-8. **Deploy** → **Trigger deploy** ile yeniden deploy edin
-
 #### Vercel Deployment
 
 1. Vercel dashboard'a gidin: https://vercel.com/dashboard
