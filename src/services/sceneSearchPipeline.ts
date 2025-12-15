@@ -389,14 +389,6 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return denom === 0 ? 0 : dot / denom;
 }
 
-function calculateEmbeddingScore(
-  overviewSimilarity: number,
-  keywordSimilarity: number,
-  titleSimilarity: number
-): number {
-  return overviewSimilarity * 0.6 + keywordSimilarity * 0.3 + titleSimilarity * 0.1;
-}
-
 async function embedAndScore(
   canonicalQuery: string,
   candidates: MovieCandidate[]
@@ -408,28 +400,20 @@ async function embedAndScore(
 
   for (const movie of candidates) {
     try {
-      const overviewEmbedding = movie.overview ? await getEmbedding(movie.overview) : null;
-      const titleEmbedding = movie.title ? await getEmbedding(movie.title) : null;
+      // Her film için TEK embedding isteği: overview + title + keywords'i birleştiriyoruz
+      const combinedText = [
+        movie.title,
+        movie.overview,
+        movie.keywords.slice(0, 5).join(' '),
+      ]
+        .filter(Boolean)
+        .join(' \n ');
 
-      const keywordEmbeddings: number[][] = [];
-      for (const kw of movie.keywords.slice(0, 5)) {
-        try {
-          keywordEmbeddings.push(await getEmbedding(kw));
-        } catch {
-          // tek tek keyword hatasını yut
-        }
-      }
+      const movieEmbedding = await getEmbedding(combinedText);
+      const similarity = cosineSimilarity(queryEmbedding, movieEmbedding);
 
-      const overviewSim = overviewEmbedding ? cosineSimilarity(queryEmbedding, overviewEmbedding) : 0;
-      const titleSim = titleEmbedding ? cosineSimilarity(queryEmbedding, titleEmbedding) : 0;
-
-      let maxKwSim = 0;
-      for (const kwEmb of keywordEmbeddings) {
-        const sim = cosineSimilarity(queryEmbedding, kwEmb);
-        if (sim > maxKwSim) maxKwSim = sim;
-      }
-
-      const score = calculateEmbeddingScore(overviewSim, maxKwSim, titleSim);
+      // Diğer sinyalleri şimdilik sadeleştirip tek skor olarak kullanıyoruz
+      const score = similarity;
 
       if (score >= 0.1) {
         scored.push({ movie, embeddingScore: score });
