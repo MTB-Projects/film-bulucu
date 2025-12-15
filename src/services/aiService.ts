@@ -32,23 +32,17 @@ function getEmbeddingApiUrl(): string | null {
     return customUrl;
   }
   
-  // Vercel production ortamında
+  // Local development: use Vite proxy
+  if (import.meta.env.DEV) {
+    return '/api/embedding';
+  }
+  
+  // Production: Vercel
   if (import.meta.env.PROD && typeof window !== 'undefined') {
     const hostname = window.location.hostname;
     if (hostname.includes('vercel.app') || hostname.includes('vercel.com')) {
       return '/api/embedding';
     }
-    // Netlify production ortamında
-    if (hostname.includes('netlify.app') || hostname.includes('netlify.com')) {
-      return '/.netlify/functions/embedding';
-    }
-  }
-  
-  // Development ortamında - Vite proxy kullanılabilir veya direkt serverless function
-  // Local development için Vite proxy kullanılması önerilir
-  if (import.meta.env.DEV) {
-    // Vite proxy kullanılıyorsa
-    return '/api/embedding';
   }
   
   return null;

@@ -9,13 +9,15 @@
     "@mui/icons-material": "^5.14.10",
     "@mui/material": "^5.14.10",
     "axios": "^1.5.0",
-    "openai": "^4.87.3",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "openai": "^6.10.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.16.0"
   },
   "devDependencies": {
-    "@netlify/functions": "^2.4.0",
     "@types/react": "^18.2.21",
     "@types/react-dom": "^18.2.7",
     "@vercel/node": "^3.0.7",
@@ -26,6 +28,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "local-server": "node local-server.js"
   }
 }

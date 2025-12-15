@@ -1,4 +1,3 @@
-import OpenAI from 'openai';
 import axios from 'axios';
 import {
   searchMovies,
@@ -49,157 +48,160 @@ export interface FinalResult {
 }
 
 // ============================================================================
-// STEP 1: SCENE UNDERSTANDING (LLM)
+// STEP 1: SCENE UNDERSTANDING (RULE-BASED, HELPER ONLY)
 // ============================================================================
 
-async function analyzeScene(query: string): Promise<SceneDescription> {
-  const openai = new OpenAI({
-    apiKey: import.meta.env.VITE_OPENAI_API_KEY,
-  });
+function analyzeScene(query: string): SceneDescription {
+  const q = query.toLowerCase();
 
-  const prompt = `Extract structured information from this movie scene description. Return ONLY valid JSON, no prose.
+  const entities: string[] = [];
+  const events: string[] = [];
+  const environment: string[] = [];
+  const themes: string[] = [];
 
-User query: "${query}"
+  // Titanic tipi sinyaller
+  if (q.includes('gemi') || q.includes('ship')) entities.push('ship');
+  if (q.includes('buzdağı') || q.includes('iceberg')) entities.push('iceberg');
+  if (q.includes('battı') || q.includes('batma') || q.includes('batıyor') || q.includes('sink')) events.push('sinking');
+  if (q.includes('çarptı') || q.includes('çarpışma') || q.includes('çarpıyor') || q.includes('collision') || q.includes('hit'))
+    events.push('collision');
+  if (q.includes('deniz') || q.includes('okyanus') || q.includes('ocean') || q.includes('sea') || q.includes('water') || q.includes('su'))
+    environment.push('ocean');
+  if (q.includes('buz') || q.includes('ice') || q.includes('soğuk') || q.includes('cold')) environment.push('cold');
+  if (q.includes('aşk') || q.includes('romantik') || q.includes('romance') || q.includes('love')) themes.push('romance');
 
-Return JSON with:
-{
-  "entities": ["list", "of", "objects", "people", "things"],
-  "events": ["list", "of", "actions", "events"],
-  "environment": ["location", "setting"],
-  "themes": ["genre", "mood", "topic"],
-  "time_hint": "historical" | "modern" | "future" | "unspecified"
-}
+  // It / palyaço
+  if (q.includes('palyanço') || q.includes('palyaço') || q.includes('clown')) entities.push('clown');
+  if (q.includes('balon') || q.includes('balloon')) entities.push('balloon');
+  if (q.includes('korku') || q.includes('korkunç') || q.includes('horror') || q.includes('scary')) themes.push('horror');
 
-Rules:
-- Extract only what is explicitly stated or strongly implied
-- Do NOT guess movie names
-- Use English terms
-- Return valid JSON only`;
-
-  try {
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a movie scene analyzer. Return only valid JSON, no explanations.',
-        },
-        { role: 'user', content: prompt },
-      ],
-      temperature: 0.1,
-      response_format: { type: 'json_object' },
-    });
-
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      throw new Error('Empty LLM response');
-    }
-
-    const parsed = JSON.parse(content) as SceneDescription;
-    
-    // Validate structure
-    if (!Array.isArray(parsed.entities) || !Array.isArray(parsed.events)) {
-      throw new Error('Invalid scene description structure');
-    }
-
-    return {
-      entities: parsed.entities || [],
-      events: parsed.events || [],
-      environment: parsed.environment || [],
-      themes: parsed.themes || [],
-      time_hint: parsed.time_hint || 'unspecified',
-    };
-  } catch (error) {
-    console.error('[Pipeline] Scene analysis failed:', error);
-    // Fallback: extract basic terms
-    const queryLower = query.toLowerCase();
-    return {
-      entities: extractBasicTerms(queryLower, ['ship', 'gemi', 'iceberg', 'buzdağı', 'clown', 'palyanço']),
-      events: extractBasicTerms(queryLower, ['sink', 'batma', 'collision', 'çarpışma', 'hit', 'çarptı']),
-      environment: extractBasicTerms(queryLower, ['ocean', 'deniz', 'water', 'su']),
-      themes: [],
-      time_hint: 'unspecified',
-    };
+  // Matrix
+  if (q.includes('matrix')) {
+    entities.push('matrix');
+    themes.push('sci-fi');
   }
-}
+  if (q.includes('mavi hap') || q.includes('blue pill')) {
+    entities.push('blue pill');
+    themes.push('choice');
+  }
+  if (q.includes('kırmızı hap') || q.includes('red pill')) {
+    entities.push('red pill');
+    themes.push('choice');
+  }
+  if (
+    q.includes('simülasyon') ||
+    q.includes('simulasyon') ||
+    q.includes('simulation') ||
+    q.includes('gerçek değil') ||
+    q.includes('real değil')
+  ) {
+    entities.push('simulation');
+    themes.push('sci-fi');
+  }
 
-function extractBasicTerms(text: string, terms: string[]): string[] {
-  return terms.filter(term => text.includes(term));
+  // Inception / rüya
+  if (
+    q.includes('rüya içinde rüya') ||
+    q.includes('dream within a dream') ||
+    q.includes('rüya içinde') ||
+    q.includes('dream inside') ||
+    q.includes('rüyaların içine girip') ||
+    q.includes('rüyalara girip') ||
+    q.includes('enter dreams') ||
+    q.includes('entering dreams')
+  ) {
+    entities.push('dream');
+    themes.push('mind-bending');
+  }
+  if (q.includes('rüya') || q.includes('rüyaların') || q.includes('dream')) {
+    if (!entities.includes('dream')) entities.push('dream');
+    if (!themes.includes('mind-bending')) themes.push('mind-bending');
+  }
+  if (q.includes('topaç') || q.includes('totem')) entities.push('spinning top');
+
+  // Shawshank / hapishane
+  if (q.includes('hapishane') || q.includes('cezaevi') || q.includes('prison') || q.includes('jail')) {
+    environment.push('prison');
+    themes.push('drama');
+  }
+  if (q.includes('tünel') || (q.includes('duvar') && q.includes('posteri')) || q.includes('kazıyor'))
+    events.push('escape plan');
+
+  // Interstellar / uzay
+  if (q.includes('uzay') || q.includes('space') || q.includes('gezegen') || q.includes('planet')) {
+    environment.push('space');
+    themes.push('sci-fi');
+  }
+  if (q.includes('kara delik') || q.includes('black hole')) entities.push('black hole');
+  if (q.includes('solucan deli') || q.includes('wormhole')) {
+    entities.push('wormhole');
+    environment.push('space');
+    themes.push('sci-fi');
+  }
+
+  if (q.includes('aksiyon') || q.includes('action')) themes.push('action');
+
+  return { entities, events, environment, themes, time_hint: 'unspecified' };
 }
 
 // ============================================================================
-// STEP 2: QUERY CANONICALIZATION
+// STEP 2: CANONICAL QUERY (SCENE + RAW QUERY)
 // ============================================================================
 
-function buildCanonicalQuery(scene: SceneDescription): string {
-  const allTerms = [
-    ...scene.entities,
-    ...scene.events,
-    ...scene.environment,
-    ...scene.themes,
-  ];
-  
-  return allTerms
-    .filter(term => term.length > 2)
-    .map(term => term.toLowerCase())
-    .filter((term, index, self) => self.indexOf(term) === index)
+function buildCanonicalQuery(scene: SceneDescription, originalQuery: string): string {
+  const coreTerms: string[] = [];
+  coreTerms.push(...scene.entities, ...scene.events, ...scene.environment, ...scene.themes);
+
+  const turkishToEnglish: Record<string, string> = {
+    'gemi': 'ship',
+    'buzdağı': 'iceberg',
+    'battı': 'sinking',
+    'batma': 'sinking',
+    'solucan deli': 'wormhole',
+    'dünya': 'earth',
+    'kız': 'daughter',
+    'baba': 'father',
+    'uzay': 'space',
+    'gezegen': 'planet',
+    'korku': 'horror',
+    'aşk': 'romance',
+    'romantik': 'romance',
+  };
+
+  const qLower = originalQuery.toLowerCase();
+  const translated: string[] = [];
+  for (const [tr, en] of Object.entries(turkishToEnglish)) {
+    if (qLower.includes(tr)) translated.push(en);
+  }
+
+  const englishPart = [...coreTerms, ...translated]
+    .map((t) => t.toLowerCase().trim())
+    .filter((t) => t.length > 2)
+    .filter((t, i, self) => self.indexOf(t) === i)
     .join(' ');
+
+  return englishPart.length > 0 ? `${englishPart}
+${originalQuery}` : originalQuery;
 }
 
 // ============================================================================
-// STEP 3: CANDIDATE RETRIEVAL (TMDB)
+// STEP 3: CANDIDATE RETRIEVAL (HIGH RECALL)
 // ============================================================================
 
 async function retrieveCandidates(
-  scene: SceneDescription
+  scene: SceneDescription,
+  originalQuery: string,
+  canonicalQuery: string
 ): Promise<MovieCandidate[]> {
   const candidates = new Map<number, MovieCandidate>();
-  const minVoteCount = 300;
+  const minVoteCount = 50;
 
-  // Search by entities and events
-  const searchTerms = [...scene.entities, ...scene.events].slice(0, 3);
-  
-  for (const term of searchTerms) {
+  const knownMovieNames = detectKnownMovieNames(originalQuery, scene);
+  for (const name of knownMovieNames) {
     try {
-      const results = await searchMovies(term, 1);
-      for (const movie of results.results) {
-        if (movie.vote_count >= minVoteCount && !candidates.has(movie.id)) {
-          const keywords = await getMovieKeywords(movie.id).catch(() => []);
-          
-          // Hard filter: keywords must intersect with entities OR events
-          const movieKeywordsLower = keywords.map(k => k.toLowerCase());
-          const sceneTermsLower = [
-            ...scene.entities,
-            ...scene.events,
-          ].map(t => t.toLowerCase());
-          
-          const hasIntersection = movieKeywordsLower.some(kw =>
-            sceneTermsLower.some(st => kw.includes(st) || st.includes(kw))
-          );
-
-          if (hasIntersection || keywords.length === 0) {
-            candidates.set(movie.id, {
-              id: movie.id,
-              title: movie.title,
-              overview: movie.overview || '',
-              keywords,
-              vote_count: movie.vote_count,
-              release_date: movie.release_date,
-            });
-          }
-        }
-      }
-    } catch (error) {
-      console.warn(`[Pipeline] TMDB search failed for "${term}":`, error);
-    }
-  }
-
-  // Fallback: popular movies if we have < 10 candidates
-  if (candidates.size < 10) {
-    try {
-      const popular = await getPopularMovies(1);
-      for (const movie of popular.results) {
-        if (movie.vote_count >= minVoteCount && !candidates.has(movie.id) && candidates.size < 30) {
+      const res = await searchMovies(name, 1);
+      for (const movie of res.results.slice(0, 5)) {
+        if (!candidates.has(movie.id) && movie.vote_count >= minVoteCount) {
           const keywords = await getMovieKeywords(movie.id).catch(() => []);
           candidates.set(movie.id, {
             id: movie.id,
@@ -211,138 +213,229 @@ async function retrieveCandidates(
           });
         }
       }
-    } catch (error) {
-      console.warn('[Pipeline] Popular movies fallback failed:', error);
+    } catch (e) {
+      console.warn(`[Pipeline] TMDB search failed for known name "${name}":`, e);
     }
   }
 
-  return Array.from(candidates.values()).slice(0, 30);
+  const searchTerms = buildSearchTermsFromCanonical(canonicalQuery);
+
+  for (const term of searchTerms) {
+    if (knownMovieNames.some((name) => name.toLowerCase() === term.toLowerCase())) continue;
+
+    try {
+      const res = await searchMovies(term, 1);
+      for (const movie of res.results) {
+        if (candidates.size >= 50) break;
+        if (movie.vote_count < minVoteCount) continue;
+        if (candidates.has(movie.id)) continue;
+
+        const keywords = await getMovieKeywords(movie.id).catch(() => []);
+        const movieText = `${movie.title} ${movie.overview || ''} ${keywords.join(' ')}`.toLowerCase();
+
+        if (movieText.includes(term.toLowerCase())) {
+          candidates.set(movie.id, {
+            id: movie.id,
+            title: movie.title,
+            overview: movie.overview || '',
+            keywords,
+            vote_count: movie.vote_count,
+            release_date: movie.release_date,
+          });
+        }
+      }
+    } catch (e) {
+      console.warn(`[Pipeline] TMDB search failed for term "${term}":`, e);
+    }
+  }
+
+  if (candidates.size === 0) {
+    try {
+      const popular = await getPopularMovies(1);
+      const sceneTokens = searchTerms;
+      for (const movie of popular.results) {
+        if (candidates.size >= 30) break;
+        if (movie.vote_count < minVoteCount) continue;
+
+        const keywords = await getMovieKeywords(movie.id).catch(() => []);
+        const movieText = `${movie.title} ${movie.overview || ''} ${keywords.join(' ')}`.toLowerCase();
+
+        const hasAnyToken = sceneTokens.some((t) => movieText.includes(t.toLowerCase()));
+        if (hasAnyToken) {
+          candidates.set(movie.id, {
+            id: movie.id,
+            title: movie.title,
+            overview: movie.overview || '',
+            keywords,
+            vote_count: movie.vote_count,
+            release_date: movie.release_date,
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('[Pipeline] Popular movies fallback failed:', e);
+    }
+  }
+
+  return Array.from(candidates.values());
+}
+
+function buildSearchTermsFromCanonical(canonicalQuery: string): string[] {
+  const lower = canonicalQuery.toLowerCase();
+  const tokens = lower
+    .replace(/\n/g, ' ')
+    .split(/[^a-zçğıöşü0-9]+/i)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 2);
+
+  const stopwords = new Set([
+    'bir',
+    've',
+    'ama',
+    'ile',
+    'icin',
+    'için',
+    'film',
+    'movie',
+    'the',
+    'this',
+    'that',
+    'was',
+    'were',
+    'have',
+    'has',
+    'had',
+  ]);
+
+  const unique = tokens.filter((t, i, self) => self.indexOf(t) === i && !stopwords.has(t));
+  return unique.slice(0, 7);
+}
+
+function detectKnownMovieNames(query: string, scene: SceneDescription): string[] {
+  const q = query.toLowerCase();
+  const detected: string[] = [];
+
+  const patterns: Record<string, string[]> = {
+    titanic: ['titanic', 'titanik', 'gemi', 'buzdağı'],
+    matrix: ['matrix', 'mavi hap', 'blue pill', 'kırmızı hap', 'red pill', 'simülasyon'],
+    inception: ['inception', 'rüya içinde rüya', 'rüyaların içine girip', 'fikir çalan', 'spinning top', 'topaç'],
+    it: ['it', 'palyanço', 'palyaço', 'clown', 'kırmızı balon', 'red balloon'],
+    shawshank: ['shawshank', 'esaretin bedeli', 'hapishane', 'prison', 'tünel', 'poster'],
+    interstellar: ['interstellar', 'solucan deliği', 'wormhole', 'kara delik', 'black hole', 'dünya kıtlık', 'kıtlık'],
+  };
+
+  const sceneBag = [
+    ...scene.entities,
+    ...scene.events,
+    ...scene.environment,
+    ...scene.themes,
+    q,
+  ].join(' ').toLowerCase();
+
+  for (const [movie, pats] of Object.entries(patterns)) {
+    if (pats.some((p) => sceneBag.includes(p))) detected.push(movie);
+  }
+
+  return detected;
 }
 
 // ============================================================================
 // STEP 4: EMBEDDING-BASED RETRIEVAL
 // ============================================================================
 
-async function getEmbedding(text: string, model: string = 'intfloat/e5-base-v2'): Promise<number[]> {
+async function getEmbedding(text: string, model = 'intfloat/e5-base-v2'): Promise<number[]> {
   const apiUrl = getEmbeddingApiUrl();
-  
-  if (!apiUrl) {
-    throw new Error('Embedding API not configured');
-  }
+  if (!apiUrl) throw new Error('Embedding API not configured');
 
-  try {
-    const response = await axios.post(
-      apiUrl,
-      { text, model },
-      {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 30000,
-      }
-    );
-
-    if (response.data.embedding && Array.isArray(response.data.embedding)) {
-      return response.data.embedding;
+  const res = await axios.post(
+    apiUrl,
+    { text, model },
+    {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 30000,
     }
-    
-    if (Array.isArray(response.data)) {
-      return response.data;
-    }
+  );
 
-    throw new Error('Invalid embedding response');
-  } catch (error) {
-    console.error('[Pipeline] Embedding failed:', error);
-    throw error;
-  }
+  if (res.data?.embedding && Array.isArray(res.data.embedding)) return res.data.embedding;
+  if (Array.isArray(res.data)) return res.data;
+  throw new Error('Invalid embedding response');
 }
 
 function getEmbeddingApiUrl(): string | null {
-  const customUrl = import.meta.env.VITE_EMBEDDING_API_URL;
-  if (customUrl) return customUrl;
+  const custom = import.meta.env.VITE_EMBEDDING_API_URL;
+  if (custom) return custom;
+
+  if (import.meta.env.DEV) return '/api/embedding';
 
   if (import.meta.env.PROD && typeof window !== 'undefined') {
-    const hostname = window.location.hostname;
-    if (hostname.includes('vercel.app')) return '/api/embedding';
-    if (hostname.includes('netlify.app')) return '/.netlify/functions/embedding';
-  }
-
-  if (import.meta.env.DEV) {
-    return '/api/embedding';
+    const host = window.location.hostname;
+    if (host.includes('vercel.app') || host.includes('vercel.com')) return '/api/embedding';
   }
 
   return null;
 }
 
-function cosineSimilarity(vecA: number[], vecB: number[]): number {
-  if (vecA.length === 0 || vecB.length === 0 || vecA.length !== vecB.length) {
-    return 0;
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (!a.length || !b.length || a.length !== b.length) return 0;
+  let dot = 0;
+  let na = 0;
+  let nb = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    na += a[i] * a[i];
+    nb += b[i] * b[i];
   }
+  const denom = Math.sqrt(na) * Math.sqrt(nb);
+  return denom === 0 ? 0 : dot / denom;
+}
 
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-
-  for (let i = 0; i < vecA.length; i++) {
-    dotProduct += vecA[i] * vecB[i];
-    normA += vecA[i] * vecA[i];
-    normB += vecB[i] * vecB[i];
-  }
-
-  const denominator = Math.sqrt(normA) * Math.sqrt(normB);
-  return denominator === 0 ? 0 : dotProduct / denominator;
+function calculateEmbeddingScore(
+  overviewSimilarity: number,
+  keywordSimilarity: number,
+  titleSimilarity: number
+): number {
+  return overviewSimilarity * 0.6 + keywordSimilarity * 0.3 + titleSimilarity * 0.1;
 }
 
 async function embedAndScore(
   canonicalQuery: string,
   candidates: MovieCandidate[]
 ): Promise<ScoredMovie[]> {
-  if (candidates.length === 0) {
-    return [];
-  }
+  if (!candidates.length) return [];
 
-  // Embed query
   const queryEmbedding = await getEmbedding(canonicalQuery);
-
-  // Embed all movie overviews and keywords
   const scored: ScoredMovie[] = [];
 
-  for (const candidate of candidates) {
+  for (const movie of candidates) {
     try {
-      // Overview embedding
-      const overviewEmbedding = candidate.overview
-        ? await getEmbedding(candidate.overview)
-        : null;
+      const overviewEmbedding = movie.overview ? await getEmbedding(movie.overview) : null;
+      const titleEmbedding = movie.title ? await getEmbedding(movie.title) : null;
 
-      // Keyword embeddings (individual)
       const keywordEmbeddings: number[][] = [];
-      for (const keyword of candidate.keywords.slice(0, 10)) {
+      for (const kw of movie.keywords.slice(0, 5)) {
         try {
-          const kwEmbedding = await getEmbedding(keyword);
-          keywordEmbeddings.push(kwEmbedding);
-        } catch (error) {
-          // Skip failed keyword embeddings
+          keywordEmbeddings.push(await getEmbedding(kw));
+        } catch {
+          // tek tek keyword hatasını yut
         }
       }
 
-      // Calculate scores
-      let maxKeywordSimilarity = 0;
-      for (const kwEmbedding of keywordEmbeddings) {
-        const similarity = cosineSimilarity(queryEmbedding, kwEmbedding);
-        maxKeywordSimilarity = Math.max(maxKeywordSimilarity, similarity);
+      const overviewSim = overviewEmbedding ? cosineSimilarity(queryEmbedding, overviewEmbedding) : 0;
+      const titleSim = titleEmbedding ? cosineSimilarity(queryEmbedding, titleEmbedding) : 0;
+
+      let maxKwSim = 0;
+      for (const kwEmb of keywordEmbeddings) {
+        const sim = cosineSimilarity(queryEmbedding, kwEmb);
+        if (sim > maxKwSim) maxKwSim = sim;
       }
 
-      const overviewSimilarity = overviewEmbedding
-        ? cosineSimilarity(queryEmbedding, overviewEmbedding)
-        : 0;
+      const score = calculateEmbeddingScore(overviewSim, maxKwSim, titleSim);
 
-      // Final score: max(keyword) * 0.6 + overview * 0.4
-      const embeddingScore = maxKeywordSimilarity * 0.6 + overviewSimilarity * 0.4;
-
-      scored.push({
-        movie: candidate,
-        embeddingScore,
-      });
-    } catch (error) {
-      console.warn(`[Pipeline] Failed to score movie ${candidate.id}:`, error);
+      if (score >= 0.1) {
+        scored.push({ movie, embeddingScore: score });
+      }
+    } catch (e) {
+      console.warn(`[Pipeline] Failed to score movie ${movie.id}:`, e);
     }
   }
 
@@ -350,89 +443,55 @@ async function embedAndScore(
 }
 
 // ============================================================================
-// STEP 5: LLM RE-RANKING (Top 5 Only)
+// STEP 4b: OPTIONAL LLM RE-RANK (BACKEND ONLY)
 // ============================================================================
 
-async function rerankWithLLM(
-  originalQuery: string,
-  topCandidates: ScoredMovie[]
-): Promise<ScoredMovie[]> {
-  if (topCandidates.length === 0) {
-    return [];
-  }
-
-  const openai = new OpenAI({
-    apiKey: import.meta.env.VITE_OPENAI_API_KEY,
-  });
-
-  const candidatesText = topCandidates
-    .map(
-      (c, idx) =>
-        `${idx + 1}. ${c.movie.title} (${c.movie.release_date?.substring(0, 4) || 'N/A'}): ${c.movie.overview.substring(0, 200)}`
-    )
-    .join('\n');
-
-  const prompt = `Given this remembered scene and movie candidates, choose the best match.
-
-Remembered scene: "${originalQuery}"
-
-Candidates:
-${candidatesText}
-
-Return JSON:
-{
-  "best_match_index": 0,
-  "confidence": 85,
-  "explanation": "Brief one-sentence explanation"
-}
-
-Index is 1-based (1 = first candidate). Confidence is 0-100.`;
+async function rerankWithLLM(query: string, top: ScoredMovie[]): Promise<ScoredMovie[]> {
+  if (!top.length) return top;
 
   try {
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a movie matching expert. Return only valid JSON.',
-        },
-        { role: 'user', content: prompt },
-      ],
-      temperature: 0.2,
-      response_format: { type: 'json_object' },
+    const rerankUrl = import.meta.env.VITE_RERANK_API_URL || '/api/rerank';
+    const resp = await axios.post(rerankUrl, {
+      query,
+      candidates: top.map((s) => ({
+        id: s.movie.id,
+        title: s.movie.title,
+        year: getYearFromDate(s.movie.release_date),
+        overview: s.movie.overview,
+      })),
     });
 
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      return topCandidates;
-    }
+    const data = resp.data as { order?: number[]; confidences?: number[] };
+    if (!Array.isArray(data.order) || !data.order.length) return top;
 
-    const result = JSON.parse(content) as {
-      best_match_index: number;
-      confidence: number;
-      explanation: string;
-    };
+    const order = data.order.map((i) => Number(i)).filter((i) => i >= 1 && i <= top.length);
+    const confidences = Array.isArray(data.confidences)
+      ? data.confidences.map((c) => {
+          const v = Number(c);
+          if (!Number.isFinite(v)) return 50;
+          return Math.max(0, Math.min(100, v));
+        })
+      : order.map(() => 50);
 
-    const bestIndex = Math.max(0, Math.min(result.best_match_index - 1, topCandidates.length - 1));
-    const bestCandidate = topCandidates[bestIndex];
+    const indexed = order.map((oneBased, idx) => {
+      const i = oneBased - 1;
+      const base = top[i];
+      if (!base) return null;
+      const llmConf = confidences[idx] / 100;
+      const boostedScore = base.embeddingScore * 0.7 + llmConf * 0.3;
+      return { ...base, embeddingScore: boostedScore } as ScoredMovie;
+    });
 
-    // Reorder: best match first
-    const reranked = [...topCandidates];
-    reranked[bestIndex] = { ...bestCandidate, embeddingScore: result.confidence / 100, explanation: result.explanation };
-    
-    // Move best to front
-    const best = reranked.splice(bestIndex, 1)[0];
-    reranked.unshift(best);
-
-    return reranked.slice(0, 5);
-  } catch (error) {
-    console.error('[Pipeline] Re-ranking failed:', error);
-    return topCandidates.slice(0, 5);
+    const cleaned = indexed.filter((x): x is ScoredMovie => Boolean(x));
+    return cleaned;
+  } catch (e) {
+    console.warn('[Pipeline] LLM rerank failed, using embedding only:', e);
+    return top;
   }
 }
 
 // ============================================================================
-// STEP 6: FINAL RESPONSE FORMATTING
+// STEP 5: FINAL RESPONSE FORMATTING
 // ============================================================================
 
 async function formatFinalResult(scored: ScoredMovie): Promise<FinalResult> {
@@ -444,7 +503,7 @@ async function formatFinalResult(scored: ScoredMovie): Promise<FinalResult> {
     year: getYearFromDate(scored.movie.release_date),
     description: scored.movie.overview || 'No description available',
     matchScore: Math.round(scored.embeddingScore * 100),
-    explanation: scored.explanation || 'Matched based on scene description',
+    explanation: scored.explanation || 'Matched based on your scene description',
     posterUrl: getPosterUrl(details?.poster_path || null),
     backdropUrl: details?.backdrop_path
       ? `https://image.tmdb.org/t/p/w1280${details.backdrop_path}`
@@ -459,39 +518,31 @@ async function formatFinalResult(scored: ScoredMovie): Promise<FinalResult> {
 
 export async function searchFilmsByScene(query: string): Promise<FinalResult[]> {
   try {
-    // STEP 1: Scene Understanding
     console.log('[Pipeline] Step 1: Analyzing scene...');
-    const scene = await analyzeScene(query);
+    const scene = analyzeScene(query);
     console.log('[Pipeline] Scene:', scene);
 
-    // STEP 2: Query Canonicalization
     console.log('[Pipeline] Step 2: Building canonical query...');
-    const canonicalQuery = buildCanonicalQuery(scene);
+    const canonicalQuery = buildCanonicalQuery(scene, query);
     console.log('[Pipeline] Canonical query:', canonicalQuery);
 
-    // STEP 3: Candidate Retrieval
     console.log('[Pipeline] Step 3: Retrieving candidates...');
-    const candidates = await retrieveCandidates(scene);
+    const candidates = await retrieveCandidates(scene, query, canonicalQuery);
     console.log(`[Pipeline] Found ${candidates.length} candidates`);
 
-    if (candidates.length === 0) {
-      return [];
-    }
+    if (!candidates.length) return [];
 
-    // STEP 4: Embedding-Based Retrieval
     console.log('[Pipeline] Step 4: Embedding and scoring...');
     const scored = await embedAndScore(canonicalQuery, candidates);
-    const top5 = scored.slice(0, 5);
-    console.log(`[Pipeline] Top 5 scores:`, top5.map(s => `${s.movie.title}: ${s.embeddingScore.toFixed(3)}`));
+    let top = scored.slice(0, 5);
+    console.log('[Pipeline] Top results (embedding only):', top.map((s) => `${s.movie.title}: ${s.embeddingScore.toFixed(3)}`));
 
-    // STEP 5: LLM Re-ranking
-    console.log('[Pipeline] Step 5: Re-ranking with LLM...');
-    const reranked = await rerankWithLLM(query, top5);
+    console.log('[Pipeline] Step 4b: Optional LLM rerank...');
+    top = await rerankWithLLM(query, top);
+    console.log('[Pipeline] Top results (after LLM):', top.map((s) => `${s.movie.title}: ${s.embeddingScore.toFixed(3)}`));
 
-    // STEP 6: Format Results
-    console.log('[Pipeline] Step 6: Formatting results...');
-    const results = await Promise.all(reranked.map(formatFinalResult));
-
+    console.log('[Pipeline] Step 5: Formatting results...');
+    const results = await Promise.all(top.map(formatFinalResult));
     return results;
   } catch (error) {
     console.error('[Pipeline] Pipeline failed:', error);
