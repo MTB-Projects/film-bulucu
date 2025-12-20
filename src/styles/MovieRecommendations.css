@@ -1,7 +1,24 @@
-.movies-grid {
+.movie-recommendations {
+  margin-top: 2rem;
+}
+
+.movies-row {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 2rem;
+  grid-auto-flow: column;
+  grid-auto-columns: 180px;
+  gap: 1rem;
+  overflow-x: auto;
+  padding: 0.5rem 0.25rem 0.5rem 0.25rem;
+  scrollbar-width: thin;
+}
+
+.movies-row::-webkit-scrollbar {
+  height: 8px;
+}
+
+.movies-row::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 999px;
 }
 
 .movie-card {
@@ -10,19 +27,18 @@
   overflow: hidden;
   box-shadow: var(--box-shadow);
   transition: var(--transition);
-  height: 100%;
-  display: flex;
-  flex-direction: column;
+  cursor: pointer;
 }
 
 .movie-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+  transform: translateY(-4px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.12);
 }
 
 .movie-poster {
   width: 100%;
-  height: 300px;
+  height: 260px;
+  position: relative;
   overflow: hidden;
 }
 
@@ -30,47 +46,39 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform 0.5s ease;
 }
 
-.movie-card:hover .movie-poster img {
-  transform: scale(1.05);
+.movie-score {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  padding: 0.35rem 0.5rem;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 0.9rem;
 }
 
 .movie-details {
-  padding: 1.5rem;
-  display: flex;
-  flex-direction: column;
-  flex: 1;
+  padding: 0.6rem 0.75rem 0.9rem;
 }
 
 .movie-title {
-  font-size: 1.2rem;
-  margin-bottom: 0.5rem;
+  font-size: 0.95rem;
+  margin: 0 0 0.25rem 0;
   color: var(--primary-color);
+  line-height: 1.3;
 }
 
 .movie-year {
   font-weight: normal;
   color: #777;
-  font-size: 0.9rem;
+  margin-left: 0.25rem;
 }
 
-.movie-description {
-  color: #555;
-  margin-bottom: 1.5rem;
-  font-size: 0.9rem;
-  flex: 1;
+.movie-meta {
+  color: #666;
+  font-size: 0.85rem;
+  margin: 0;
 }
-
-.movie-details-button {
-  align-self: flex-end;
-  padding: 0.5rem 1rem;
-  font-size: 0.9rem;
-}
-
-@media (max-width: 768px) {
-  .movies-grid {
-    grid-template-columns: 1fr;
-  }
-} 

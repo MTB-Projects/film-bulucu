@@ -4,6 +4,7 @@ import {
   getPopularMovies,
   getMovieKeywords,
   getMovieDetails,
+  getMovieCredits,
   getPosterUrl,
   getYearFromDate,
 } from './tmdbService';
@@ -33,6 +34,7 @@ export interface ScoredMovie {
   movie: MovieCandidate;
   embeddingScore: number;
   explanation?: string;
+  reason?: string;
 }
 
 export interface FinalResult {
@@ -42,9 +44,11 @@ export interface FinalResult {
   description: string;
   matchScore: number;
   explanation: string;
+  reason: string;
   posterUrl: string;
   backdropUrl?: string;
   voteAverage?: number;
+  cast: string[];
 }
 
 // ============================================================================
@@ -478,8 +482,46 @@ async function rerankWithLLM(query: string, top: ScoredMovie[]): Promise<ScoredM
 // STEP 5: FINAL RESPONSE FORMATTING
 // ============================================================================
 
-async function formatFinalResult(scored: ScoredMovie): Promise<FinalResult> {
+async function getTopCastNames(movieId: number, limit = 5): Promise<string[]> {
+  const credits = await getMovieCredits(movieId).catch(() => null);
+  if (!credits || !Array.isArray(credits.cast)) return [];
+
+  const ordered = [...credits.cast].sort((a, b) => a.order - b.order);
+  const acting = ordered.filter((member) => (member.known_for_department || '').toLowerCase() === 'acting');
+  const pool = acting.length > 0 ? acting : ordered;
+
+  return pool.slice(0, limit).map((member) => member.name);
+}
+
+function buildReason(scene: SceneDescription, canonicalQuery: string, title: string): string {
+  const sceneHints = [
+    ...scene.entities,
+    ...scene.events,
+    ...scene.environment,
+    ...scene.themes,
+  ].filter(Boolean);
+
+  if (sceneHints.length > 0) {
+    const topHints = sceneHints.slice(0, 3).join(', ');
+    return `"${topHints}" detayları ${title} filminde öne çıkıyor.`;
+  }
+
+  const canonicalFirstLine = canonicalQuery.split('\n')[0]?.trim();
+  if (canonicalFirstLine) {
+    return `Sahne tarifiniz (${canonicalFirstLine}) filmle eşleşiyor.`;
+  }
+
+  return 'Sahne tarifinizle tematik eşleşme sağlandı.';
+}
+
+async function formatFinalResult(
+  scored: ScoredMovie,
+  canonicalQuery: string,
+  scene: SceneDescription
+): Promise<FinalResult> {
   const details = await getMovieDetails(scored.movie.id).catch(() => null);
+  const cast = await getTopCastNames(scored.movie.id, 5);
+  const reason = scored.explanation || buildReason(scene, canonicalQuery, scored.movie.title);
 
   return {
     id: scored.movie.id,
@@ -487,12 +529,14 @@ async function formatFinalResult(scored: ScoredMovie): Promise<FinalResult> {
     year: getYearFromDate(scored.movie.release_date),
     description: scored.movie.overview || 'No description available',
     matchScore: Math.round(scored.embeddingScore * 100),
-    explanation: scored.explanation || 'Matched based on your scene description',
+    explanation: reason,
+    reason,
     posterUrl: getPosterUrl(details?.poster_path || null),
     backdropUrl: details?.backdrop_path
       ? `https://image.tmdb.org/t/p/w1280${details.backdrop_path}`
       : undefined,
     voteAverage: details?.vote_average,
+    cast,
   };
 }
 
@@ -526,7 +570,7 @@ export async function searchFilmsByScene(query: string): Promise<FinalResult[]> 
     console.log('[Pipeline] Top results (after LLM):', top.map((s) => `${s.movie.title}: ${s.embeddingScore.toFixed(3)}`));
 
     console.log('[Pipeline] Step 5: Formatting results...');
-    const results = await Promise.all(top.map(formatFinalResult));
+    const results = await Promise.all(top.map((scored) => formatFinalResult(scored, canonicalQuery, scene)));
     return results;
   } catch (error) {
     console.error('[Pipeline] Pipeline failed:', error);

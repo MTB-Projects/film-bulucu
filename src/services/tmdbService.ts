@@ -30,6 +30,17 @@ export interface TMDBMovieDetails extends TMDBMovie {
   production_companies: Array<{ id: number; name: string }>;
 }
 
+export interface TMDBCreditsResponse {
+  id: number;
+  cast: Array<{
+    id: number;
+    name: string;
+    character: string;
+    order: number;
+    known_for_department?: string;
+  }>;
+}
+
 export interface TMDBKeywordsResponse {
   keywords: Array<{ id: number; name: string }>;
 }
@@ -50,7 +61,7 @@ function getApiKey(): string {
  */
 export function getPosterUrl(posterPath: string | null): string {
   if (!posterPath) {
-    return 'https://via.placeholder.com/500x750?text=No+Poster';
+    return 'https://placehold.co/500x750?text=No+Poster';
   }
   return `${TMDB_IMAGE_BASE_URL}${posterPath}`;
 }
@@ -60,7 +71,7 @@ export function getPosterUrl(posterPath: string | null): string {
  */
 export function getBackdropUrl(backdropPath: string | null): string {
   if (!backdropPath) {
-    return 'https://via.placeholder.com/1280x720?text=No+Image';
+    return 'https://placehold.co/1280x720?text=No+Image';
   }
   return `https://image.tmdb.org/t/p/w1280${backdropPath}`;
 }
@@ -68,7 +79,7 @@ export function getBackdropUrl(backdropPath: string | null): string {
 /**
  * TMDB'de film arama yapar
  */
-export async function searchMovies(query: string, page: number = 1): Promise<TMDBSearchResponse> {
+export async function searchMovies(query: string, page: number = 1, language: string = 'tr-TR'): Promise<TMDBSearchResponse> {
   try {
     const apiKey = getApiKey();
     const response = await axios.get<TMDBSearchResponse>(`${TMDB_BASE_URL}/search/movie`, {
@@ -76,7 +87,29 @@ export async function searchMovies(query: string, page: number = 1): Promise<TMD
         api_key: apiKey,
         query: query,
         page: page,
-        language: 'tr-TR', // Türkçe sonuçlar için
+        language,
+      },
+    });
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      throw new Error(`TMDB API hatası: ${error.message}`);
+    }
+    throw error;
+  }
+}
+
+/**
+ * TMDB en yüksek puanlı filmler
+ */
+export async function getTopRatedMovies(page: number = 1, language: string = 'tr-TR'): Promise<TMDBSearchResponse> {
+  try {
+    const apiKey = getApiKey();
+    const response = await axios.get<TMDBSearchResponse>(`${TMDB_BASE_URL}/movie/top_rated`, {
+      params: {
+        api_key: apiKey,
+        page,
+        language,
       },
     });
     return response.data;
@@ -156,6 +189,27 @@ export async function getMovieKeywords(movieId: number): Promise<string[]> {
       console.warn(`TMDB keywords API hatası for movie ${movieId}:`, error.message);
     }
     return [];
+  }
+}
+
+/**
+ * Film oyuncularını getirir
+ */
+export async function getMovieCredits(movieId: number): Promise<TMDBCreditsResponse> {
+  try {
+    const apiKey = getApiKey();
+    const response = await axios.get<TMDBCreditsResponse>(`${TMDB_BASE_URL}/movie/${movieId}/credits`, {
+      params: {
+        api_key: apiKey,
+        language: 'tr-TR',
+      },
+    });
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      console.warn(`TMDB credits API hatası for movie ${movieId}:`, error.message);
+    }
+    return { id: movieId, cast: [] };
   }
 }
 
