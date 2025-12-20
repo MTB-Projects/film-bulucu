@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import '../styles/MovieRecommendations.css'
 import { getPopularMovies, getPosterUrl, getYearFromDate, TMDBMovie } from '../services/tmdbService'
+import { useLang } from '../i18n/LanguageProvider'
 
 interface MovieCard {
   id: number
@@ -9,6 +10,8 @@ interface MovieCard {
   year: number
   poster: string
   description: string
+  score?: number
+  releaseDate?: string
 }
 
 const MovieRecommendations = () => {
@@ -16,6 +19,7 @@ const MovieRecommendations = () => {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
+  const { lang } = useLang()
   
   useEffect(() => {
     const fetchMovies = async () => {
@@ -24,12 +28,14 @@ const MovieRecommendations = () => {
         setError(null)
         const response = await getPopularMovies(1)
         
-        const movieCards: MovieCard[] = response.results.slice(0, 4).map((movie: TMDBMovie) => ({
+        const movieCards: MovieCard[] = response.results.slice(0, 10).map((movie: TMDBMovie) => ({
           id: movie.id,
           title: movie.title,
           year: getYearFromDate(movie.release_date),
           poster: getPosterUrl(movie.poster_path),
-          description: movie.overview || 'Açıklama bulunamadı.'
+          description: movie.overview || 'Açıklama bulunamadı.',
+          score: movie.vote_average ? Math.round(movie.vote_average * 10) / 10 : undefined,
+          releaseDate: movie.release_date,
         }))
         
         setMovies(movieCards)
@@ -66,32 +72,33 @@ const MovieRecommendations = () => {
   
   return (
     <div className="movie-recommendations">
-      <div className="movies-grid">
+      <div className="movies-row" data-lang={lang}>
         {movies.map(movie => (
-          <div key={movie.id} className="movie-card">
+          <div key={movie.id} className="movie-card" onClick={() => handleMovieClick(movie.id)}>
             <div className="movie-poster">
-              <img 
-                src={movie.poster} 
+              <img
+                src={movie.poster}
                 alt={movie.title}
+                loading="lazy"
                 onError={(e) => {
                   const target = e.target as HTMLImageElement;
-                  target.src = `https://via.placeholder.com/300x450?text=${encodeURIComponent(movie.title)}`;
+                  target.src = `https://placehold.co/200x300?text=${encodeURIComponent(movie.title)}`;
                 }}
               />
+              {movie.score !== undefined && (
+                <div className="movie-score">
+                  <span>{movie.score}</span>
+                </div>
+              )}
             </div>
             <div className="movie-details">
-              <h3 className="movie-title">{movie.title} <span className="movie-year">({movie.year})</span></h3>
-              <p className="movie-description">
-                {movie.description.length > 150 
-                  ? movie.description.substring(0, 150) + '...' 
-                  : movie.description}
-              </p>
-              <button 
-                className="movie-details-button btn"
-                onClick={() => handleMovieClick(movie.id)}
-              >
-                Detaylar
-              </button>
+              <h3 className="movie-title">
+                {movie.title}
+                <span className="movie-year">({movie.year})</span>
+              </h3>
+              {movie.releaseDate && (
+                <p className="movie-meta">{movie.releaseDate}</p>
+              )}
             </div>
           </div>
         ))}
