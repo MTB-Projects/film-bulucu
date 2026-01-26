@@ -168,13 +168,14 @@ Return ONLY valid JSON with this exact shape:
 
 app.post('/api/llm-search', async (req, res) => {
   try {
-    const { query } = req.body || {};
+    const { query, lang } = req.body || {};
 
     if (!query || typeof query !== 'string' || !query.trim()) {
       return res
         .status(400)
-        .json({ error: 'Invalid payload. Expected { query: string }' });
+        .json({ error: 'Invalid payload. Expected { query: string, lang?: "tr"|"en" }' });
     }
+    const language = lang === 'en' ? 'en' : 'tr';
 
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
@@ -185,7 +186,7 @@ app.post('/api/llm-search', async (req, res) => {
 
     const client = new OpenAI({ apiKey });
 
-    const prompt = `You are a movie expert. Given a vague scene description in Turkish, guess the top 5 most likely movies.
+    const prompt = `You are a movie expert. Given a vague scene description in ${language === 'tr' ? 'Turkish' : 'English'}, guess the top 5 most likely movies.
 Return strict JSON with this shape:
 {
   "results": [
@@ -200,6 +201,8 @@ Return strict JSON with this shape:
   ]
 }
 - Always return exactly 5 results ordered best to worst.
+- All text fields (description, main_characters, reason) must be written in ${language === 'tr' ? 'Turkish' : 'English'}.
+- Keep original/official movie title; do not translate titles.
 - Use plausible titles/years; if unsure about year, omit it.
 - Keep text concise; avoid spoilers; no extra commentary outside JSON.
 - If a field is unknown, leave it out rather than inventing details.
@@ -258,8 +261,9 @@ Scene: "${query}"`;
 });
 
 const PORT = 8888;
-app.listen(PORT, () => {
-  console.log(`🚀 Local embedding server running on http://localhost:${PORT}`);
+const HOST = '127.0.0.1'; // IPv4'e zorla
+app.listen(PORT, HOST, () => {
+  console.log(`🚀 Local embedding server running on http://${HOST}:${PORT}`);
   console.log(`📝 Make sure VITE_HUGGING_FACE_API_KEY is set in .env file`);
-  console.log(`🤖 LLM rerank endpoint available at http://localhost:${PORT}/api/rerank`);
+  console.log(`🤖 LLM rerank endpoint available at http://${HOST}:${PORT}/api/rerank`);
 });
